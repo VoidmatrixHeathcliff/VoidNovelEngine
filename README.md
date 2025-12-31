@@ -101,7 +101,7 @@ VoidNovelEngine工具的二进制版本可在[GitHub发布页面](https://github
 
 ## 赞助支持
 
-VoidNovelEngine是一款开源软件，因此你可以免费在MIT开源协议的范畴下使用本软件，并可用于商业使用而无需额外费用或授权。单你的赞助仍可以给予开发者前进的动力，让这个项目变得更好：[赞助名单](doc/sponsor.md)
+VoidNovelEngine是一款开源软件，因此你可以免费在MIT开源协议的范畴下使用本软件，并可用于商业使用而无需额外费用或授权。但你的赞助仍可以给予开发者前进的动力，让这个项目变得更好：[赞助名单](doc/sponsor.md)
 
 > **前往赞助：**[爱发电](https://afdian.com/a/Voidmatrix)
 
