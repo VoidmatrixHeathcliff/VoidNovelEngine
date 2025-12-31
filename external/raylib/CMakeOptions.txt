@@ -1,0 +1,35 @@
+# ## Config options ###
+include(CMakeDependentOption)
+include(EnumOption)
+
+enum_option(PLATFORM "Desktop;Web;Android;Raspberry Pi;DRM;SDL" "Platform to build for.")
+
+enum_option(OPENGL_VERSION "OFF;4.3;3.3;2.1;1.1;ES 2.0;ES 3.0" "Force a specific OpenGL Version?")
+
+# Configuration options
+option(BUILD_EXAMPLES "Build the examples." ${RAYLIB_IS_MAIN})
+option(CUSTOMIZE_BUILD "Show options for customizing your Raylib library build." OFF)
+option(ENABLE_ASAN "Enable AddressSanitizer (ASAN) for debugging (degrades performance)" OFF)
+option(ENABLE_UBSAN "Enable UndefinedBehaviorSanitizer (UBSan) for debugging" OFF)
+option(ENABLE_MSAN "Enable MemorySanitizer (MSan) for debugging (not recommended to run with ASAN)" OFF)
+
+# Shared library is always PIC. Static library should be PIC too if linked into a shared library
+option(WITH_PIC "Compile static library as position-independent code" OFF)
+option(BUILD_SHARED_LIBS "Build raylib as a shared library" OFF)
+cmake_dependent_option(USE_AUDIO "Build raylib with audio module" ON CUSTOMIZE_BUILD ON)
+
+enum_option(USE_EXTERNAL_GLFW "OFF;IF_POSSIBLE;ON" "Link raylib against system GLFW instead of embedded one")
+
+# GLFW build options
+option(GLFW_BUILD_WAYLAND "Build the bundled GLFW with Wayland support" OFF)
+option(GLFW_BUILD_X11 "Build the bundled GLFW with X11 support" ON)
+
+option(INCLUDE_EVERYTHING "Include everything disabled by default (for CI usage" OFF)
+set(OFF ${INCLUDE_EVERYTHING} CACHE INTERNAL "Replace any OFF by default with \${OFF} to have it covered by this option")
+
+include(ParseConfigHeader)
+
+foreach(FLAG IN LISTS CONFIG_HEADER_FLAGS)
+    string(REGEX MATCH "([^=]+)=(.+)" _ ${FLAG})
+    cmake_dependent_option(${CMAKE_MATCH_1} "" ${CMAKE_MATCH_2} CUSTOMIZE_BUILD ${CMAKE_MATCH_2})
+endforeach()

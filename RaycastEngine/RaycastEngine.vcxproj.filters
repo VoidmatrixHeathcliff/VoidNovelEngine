@@ -1,0 +1,189 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="资源文件">
+      <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
+      <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
+    </Filter>
+    <Filter Include="src">
+      <UniqueIdentifier>{17d44ed8-9147-49f0-80e7-738284bc71da}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\module">
+      <UniqueIdentifier>{8723b11d-9598-42d9-a698-34aed5987ea7}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\module\base">
+      <UniqueIdentifier>{0869c83d-e405-41e1-bbcc-890005d5e17e}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\module\imgui">
+      <UniqueIdentifier>{0bd4ae87-78b1-4daa-b5ec-78d8650a962e}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\module\raylib">
+      <UniqueIdentifier>{1659e1e3-8b21-42bb-92cc-0631526fb7bc}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\module\sdl">
+      <UniqueIdentifier>{214a37f5-9ec1-4536-a284-d61c193a46ef}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\module\util">
+      <UniqueIdentifier>{4b42d4c6-1f07-4cb2-a91c-49ae1ea85022}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\module\imgui\external">
+      <UniqueIdentifier>{20b029e9-4e71-45c1-8c97-4765ab3764a8}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\module\json">
+      <UniqueIdentifier>{5f1674de-ee1a-4a9b-838f-6535c699adc9}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\module\json\external">
+      <UniqueIdentifier>{6c1e6c36-d222-49ba-92f6-bc7ab36f676e}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\module\micro_pather">
+      <UniqueIdentifier>{8b6548d4-846c-4de1-8691-c81765a8ce77}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\module\micro_pather\external">
+      <UniqueIdentifier>{7aa8dd91-18ea-4796-9bb6-7aa4b3a5ed80}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\module\util\external">
+      <UniqueIdentifier>{8a16deb0-c902-4ae9-9777-81590e7c00bd}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\module\util\external\cpp-base64">
+      <UniqueIdentifier>{7ac2eea6-fdf6-4c22-891f-de448e9b5ed1}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="main.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="module.cpp">
+      <Filter>src\module\base</Filter>
+    </ClCompile>
+    <ClCompile Include="module_imgui.cpp">
+      <Filter>src\module\imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="module_raylib.cpp">
+      <Filter>src\module\raylib</Filter>
+    </ClCompile>
+    <ClCompile Include="module_sdl.cpp">
+      <Filter>src\module\sdl</Filter>
+    </ClCompile>
+    <ClCompile Include="module_util.cpp">
+      <Filter>src\module\util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Thirdparty\ImGUI\src\imgui.cpp">
+      <Filter>src\module\imgui\external</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Thirdparty\ImGUI\src\imgui_demo.cpp">
+      <Filter>src\module\imgui\external</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Thirdparty\ImGUI\src\imgui_draw.cpp">
+      <Filter>src\module\imgui\external</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Thirdparty\ImGUI\src\imgui_tables.cpp">
+      <Filter>src\module\imgui\external</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Thirdparty\ImGUI\src\imgui_widgets.cpp">
+      <Filter>src\module\imgui\external</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Thirdparty\ImGUI\src\rlImGui.cpp">
+      <Filter>src\module\imgui\external</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Thirdparty\ImGUI\src\imgui_impl_sdl2.cpp">
+      <Filter>src\module\imgui\external</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Thirdparty\ImGUI\src\imgui_impl_sdlrenderer2.cpp">
+      <Filter>src\module\imgui\external</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Thirdparty\ImGUI\src\imgui_canvas.cpp">
+      <Filter>src\module\imgui\external</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Thirdparty\ImGUI\src\imgui_node_editor.cpp">
+      <Filter>src\module\imgui\external</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Thirdparty\ImGUI\src\imgui_node_editor_api.cpp">
+      <Filter>src\module\imgui\external</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Thirdparty\ImGUI\src\crude_json.cpp">
+      <Filter>src\module\imgui\external</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Thirdparty\ImGUI\src\widgets.cpp">
+      <Filter>src\module\imgui\external</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Thirdparty\ImGUI\src\drawing.cpp">
+      <Filter>src\module\imgui\external</Filter>
+    </ClCompile>
+    <ClCompile Include="module_imgui_ext.cpp">
+      <Filter>src\module\imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Thirdparty\ImGUI\src\imgui_stdlib.cpp">
+      <Filter>src\module\imgui\external</Filter>
+    </ClCompile>
+    <ClCompile Include="module_json.cpp">
+      <Filter>src\module\json</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Thirdparty\cJSON\src\cJSON.c">
+      <Filter>src\module\json\external</Filter>
+    </ClCompile>
+    <ClCompile Include="module_json_ext.cpp">
+      <Filter>src\module\json</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Thirdparty\MicroPather\src\micropather.cpp">
+      <Filter>src\module\micro_pather\external</Filter>
+    </ClCompile>
+    <ClCompile Include="module_micro_pather.cpp">
+      <Filter>src\module\micro_pather</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Thirdparty\cpp-base64\base64.cpp">
+      <Filter>src\module\util\external\cpp-base64</Filter>
+    </ClCompile>
+    <ClCompile Include="module_util_ext.cpp">
+      <Filter>src\module\util</Filter>
+    </ClCompile>
+    <ClCompile Include="module_sdl_ext.cpp">
+      <Filter>src\module\sdl</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="module.h">
+      <Filter>src\module\base</Filter>
+    </ClInclude>
+    <ClInclude Include="module_imgui.h">
+      <Filter>src\module\imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="module_raylib.h">
+      <Filter>src\module\raylib</Filter>
+    </ClInclude>
+    <ClInclude Include="module_sdl.h">
+      <Filter>src\module\sdl</Filter>
+    </ClInclude>
+    <ClInclude Include="module_util.h">
+      <Filter>src\module\util</Filter>
+    </ClInclude>
+    <ClInclude Include="module_imgui_ext.h">
+      <Filter>src\module\imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="resource.h" />
+    <ClInclude Include="module_json.h">
+      <Filter>src\module\json</Filter>
+    </ClInclude>
+    <ClInclude Include="module_json_ext.h">
+      <Filter>src\module\json</Filter>
+    </ClInclude>
+    <ClInclude Include="module_micro_pather.h">
+      <Filter>src\module\micro_pather</Filter>
+    </ClInclude>
+    <ClInclude Include="module_util_ext.h">
+      <Filter>src\module\util</Filter>
+    </ClInclude>
+    <ClInclude Include="module_sdl_ext.h">
+      <Filter>src\module\sdl</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="RaycastEngine.rc">
+      <Filter>资源文件</Filter>
+    </ResourceCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <Image Include="icon.ico">
+      <Filter>资源文件</Filter>
+    </Image>
+  </ItemGroup>
+</Project>
