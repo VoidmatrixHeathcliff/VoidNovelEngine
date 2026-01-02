@@ -412,3 +412,11 @@ FodyWeavers.xsd
 *.msix
 *.msm
 *.msp
+
+# updated path
+.trae/
+.vs/
+.vscode/
+.idea/
+
+build/
