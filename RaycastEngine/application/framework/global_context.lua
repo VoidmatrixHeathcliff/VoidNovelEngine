@@ -23,6 +23,10 @@ module.font_wrapper_sdl = nil
 
 module.version = "0.1.0-dev.1"
 
+module.clipboard = {}
+module.clipboard.format = "vne_blueprint_clipboard"
+module.clipboard.format_version = 1
+
 module.is_debug_game = false
 module.current_blueprint = nil
 module.runtime_global_context = {}
