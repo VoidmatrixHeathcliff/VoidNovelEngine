@@ -277,18 +277,87 @@ local function _validate_blueprint_clipboard_data(data)
     if type(data) ~= "table" then
         return false, "剪贴板内容不是Lua对象/JSON对象"
     end
+
     if data.format ~= GlobalContext.clipboard.format then
         return false, "剪贴板格式不匹配"
     end
-    if data.format_version ~= GlobalContext.clipboard.format_version then
-        return false, "剪贴板版本不匹配"
+
+    if type(data.format_version) ~= "number" or data.format_version ~= GlobalContext.clipboard.format_version then
+        return false,
+            string.format("剪贴板版本不兼容（数据版本：%s，当前版本：%s）", tostring(data.format_version),
+                tostring(GlobalContext.clipboard.format_version))
     end
+
+    if type(data.engine_version) == "string" and data.engine_version ~= GlobalContext.version then
+        LogManager.log_warn(string.format("剪贴板数据来自不同引擎版本（数据：%s，当前：%s），可能存在兼容性问题", data.engine_version,
+            GlobalContext.version))
+    end
+
     if type(data.node_pool) ~= "table" then
         return false, "缺少字段：node_pool"
     end
     if type(data.link_pool) ~= "table" then
         return false, "缺少字段：link_pool"
     end
+
+    -- if #data.node_pool > 1024 then
+    --     return false, "节点数量超出限制（最大1024个）"
+    -- end
+    -- if #data.link_pool > 10240 then
+    --     return false, "连接数量超出限制（最大10240条）"
+    -- end
+
+    -- 节点数据完整性验证
+    for i, node_data in ipairs(data.node_pool) do
+        if type(node_data) ~= "table" then
+            return false, string.format("节点数据[%d]不是对象", i)
+        end
+
+        if type(node_data.type_id) ~= "string" or node_data.type_id == "" then
+            return false, string.format("节点数据[%d]缺少有效的type_id字段", i)
+        end
+
+        if not NodeDef[node_data.type_id] then
+            return false, string.format("节点数据[%d]类型'%s'不存在于当前引擎版本中", i, node_data.type_id)
+        end
+
+        if node_data.type_id == "entry" then
+            return false, "包含入口节点（entry），入口节点不可复制"
+        end
+
+        if type(node_data.id) ~= "number" then
+            return false, string.format("节点数据[%d]缺少有效的id字段", i)
+        end
+
+        if type(node_data.position) == "table" then
+            if type(node_data.position.x) ~= "number" or type(node_data.position.y) ~= "number" then
+                return false, string.format("节点数据[%d]位置信息格式错误", i)
+            end
+        end
+
+        if node_data.input_pin_list ~= nil and type(node_data.input_pin_list) ~= "table" then
+            return false, string.format("节点数据[%d]的input_pin_list字段类型错误", i)
+        end
+
+        if node_data.output_pin_list ~= nil and type(node_data.output_pin_list) ~= "table" then
+            return false, string.format("节点数据[%d]的output_pin_list字段类型错误", i)
+        end
+    end
+
+    -- 连接数据完整性验证
+    for i, link_data in ipairs(data.link_pool) do
+        if type(link_data) ~= "table" then
+            return false, string.format("连接数据[%d]不是对象", i)
+        end
+
+        if type(link_data.input_pin_id) ~= "number" then
+            return false, string.format("连接数据[%d]缺少有效的input_pin_id字段", i)
+        end
+        if type(link_data.output_pin_id) ~= "number" then
+            return false, string.format("连接数据[%d]缺少有效的output_pin_id字段", i)
+        end
+    end
+
     return true, nil
 end
 
@@ -380,12 +449,17 @@ local function _paste_nodes_from_data(self, data, mouse_pos)
                 end
             end
 
-            local node = NodeFactory.create(self, data_new.type_id, data_new)
-            _spawn_node_raw(self, node)
-            local pos = imgui.ImVec2(data_new.position.x, data_new.position.y)
-            imgui.NodeEditor.SetNodePosition(node._id, pos)
-            node._position.x, node._position.y = pos.x, pos.y
-            table.insert(created_nodes, node)
+            -- 使用pcall防止异常数据导致崩溃
+            local success, node = pcall(NodeFactory.create, self, data_new.type_id, data_new)
+            if not success then
+                LogManager.log_error(string.format("创建节点失败（类型：%s）：%s", tostring(data_new.type_id), tostring(node)))
+            elseif node then
+                _spawn_node_raw(self, node)
+                local pos = imgui.ImVec2(data_new.position.x, data_new.position.y)
+                imgui.NodeEditor.SetNodePosition(node._id, pos)
+                node._position.x, node._position.y = pos.x, pos.y
+                table.insert(created_nodes, node)
+            end
         end
     end
 
