@@ -18,8 +18,6 @@ local ResourcesManager = require("application.framework.resources_manager")
 local color_link_accepted = imgui.ImVec4(imgui.ImColor(45, 225, 45, 255).value)
 local color_link_rejected = imgui.ImVec4(imgui.ImColor(225, 45, 45, 255).value)
 
-local BLUEPRINT_CLIPBOARD_FORMAT <const> = "vne_blueprint_clipboard"
-local BLUEPRINT_CLIPBOARD_FORMAT_VERSION <const> = 1
 local blueprint_clipboard = { data = nil, text = "", error = nil }
 
 -- 检查指定引脚对象是否可以被连接
@@ -240,8 +238,8 @@ end
 
 local function _build_clipboard_data(self, only_selected)
     local data = {
-        format = BLUEPRINT_CLIPBOARD_FORMAT,
-        format_version = BLUEPRINT_CLIPBOARD_FORMAT_VERSION,
+        format = GlobalContext.clipboard.format,
+        format_version = GlobalContext.clipboard.format_version,
         engine_version = GlobalContext.version,
         node_pool = {},
         link_pool = {},
@@ -279,10 +277,10 @@ local function _validate_blueprint_clipboard_data(data)
     if type(data) ~= "table" then
         return false, "剪贴板内容不是Lua对象/JSON对象"
     end
-    if data.format ~= BLUEPRINT_CLIPBOARD_FORMAT then
+    if data.format ~= GlobalContext.clipboard.format then
         return false, "剪贴板格式不匹配"
     end
-    if data.format_version ~= BLUEPRINT_CLIPBOARD_FORMAT_VERSION then
+    if data.format_version ~= GlobalContext.clipboard.format_version then
         return false, "剪贴板版本不匹配"
     end
     if type(data.node_pool) ~= "table" then
