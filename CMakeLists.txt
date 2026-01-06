@@ -35,6 +35,12 @@ foreach(CONFIGURATION_TYPE ${CONFIGURATION_TYPES})
     set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_${TYPE} ${BUILD_DIR}/bin) # .exe and .dll
 endforeach()
 
+# 类型后缀
+set(CMAKE_RELEASE_POSTFIX "")
+set(CMAKE_DEBUG_POSTFIX "d")
+set(CMAKE_MINSIZEREL_POSTFIX "m")
+set(CMAKE_RELWITHDEBINFO_POSTFIX "rd")
+
 # 三方库
 include(${ROOT_DIR}/cmake/module.cmake)
 # external
