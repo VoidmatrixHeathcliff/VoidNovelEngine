@@ -412,3 +412,6 @@ FodyWeavers.xsd
 *.msix
 *.msm
 *.msp
+
+# cmake
+build*
