@@ -59,9 +59,9 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
         _UNICODE
     )
     set_target_properties(${ProjectName} PROPERTIES
+        DEBUG_POSTFIX "d"
         VS_DEBUGGER_WORKING_DIRECTORY "$(OutDir)"
-        VS_STARTUP_PROJECT TRUE
-        MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>"
+        MSVC_RUNTIME_LIBRARY "MultiThreaded"
     )
     # TODO: 如果安装 vcpkg 请在配置属性 vcpkg 通用关闭 Use Vcpkg，否则会优先链接 vcpkg 中的库
     target_link_libraries(${ProjectName} "lua")

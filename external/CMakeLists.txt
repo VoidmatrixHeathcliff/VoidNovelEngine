@@ -3,10 +3,11 @@ set(EXTERNAL_FOLDER "external")
 ####################################################################################################
 # raylib
 ####################################################################################################
+set(USE_MSVC_RUNTIME_LIBRARY_DLL OFF)
 add_subdirectory(raylib)
 if(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
     set_target_properties("raylib" PROPERTIES
-        MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>"
+        MSVC_RUNTIME_LIBRARY "MultiThreaded"
     )
 endif()
 set_property(TARGET "raylib" PROPERTY FOLDER "${EXTERNAL_FOLDER}/raylib")
