@@ -1,18 +1,14 @@
--- ========================================
 -- 文件: export_utils.lua
 -- 功能: 导出功能所需的辅助工具函数
--- ========================================
 
 local module = {}
 
 local util = Engine.Util
 local rl = Engine.Raylib
 
--- ========================================
 -- 函数: 选择文件夹对话框
 -- 参数: title - 对话框标题
 -- 返回: 选中的文件夹路径,取消则返回nil
--- ========================================
 module.SelectFolder = function(title)
     -- 如果 util.SelectFolder 不存在,这里提供备用实现
     if util.SelectFolder then
@@ -65,14 +61,12 @@ module.SelectFolder = function(title)
     return nil
 end
 
--- ========================================
 -- 函数: 选择文件对话框
 -- 参数: title - 对话框标题
 --       filter - 文件过滤器,如 "图像文件|*.png;*.jpg|所有文件|*.*"
 -- 返回: 选中的文件路径,取消则返回nil
--- ========================================
 module.SelectFile = function(title, filter)
-    
+
     if util.SelectFile then
         return util.SelectFile(title, filter)
     end
@@ -122,9 +116,7 @@ module.SelectFile = function(title, filter)
     return nil
 end
 
--- ========================================
 -- 函数: 获取文件大小(字节)
--- ========================================
 module.GetFileSize = function(path)
     local f = io.open(path, "rb")
     if not f then return 0 end
@@ -133,9 +125,7 @@ module.GetFileSize = function(path)
     return size
 end
 
--- ========================================
 -- 函数: 格式化文件大小为可读字符串
--- ========================================
 module.FormatFileSize = function(bytes)
     if bytes < 1024 then
         return string.format("%d B", bytes)
