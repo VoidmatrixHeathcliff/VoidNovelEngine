@@ -1,7 +1,6 @@
 -- ========================================
 -- 文件: export_utils.lua
 -- 功能: 导出功能所需的辅助工具函数
--- 说明: 如果 module_util 中已有这些功能,可忽略此文件
 -- ========================================
 
 local module = {}
@@ -73,7 +72,7 @@ end
 -- 返回: 选中的文件路径,取消则返回nil
 -- ========================================
 module.SelectFile = function(title, filter)
-    -- 如果 util.SelectFile 不存在,这里提供备用实现
+    
     if util.SelectFile then
         return util.SelectFile(title, filter)
     end
