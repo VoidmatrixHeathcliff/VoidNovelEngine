@@ -1,0 +1,9 @@
+we need a
+
+local window_assets = require("application.scene.window.window_assets")
+local window_blueprint = require("application.scene.window.window_blueprint")
+local window_console = require("application.scene.window.window_console")
+local window_designer = require("application.scene.window.window_designer")
+local window_monitor = require("application.scene.window.window_monitor")
+local window_preview = require("application.scene.window.window_preview")
+local window_exporter = require("application.scene.window.window_exporter")  
