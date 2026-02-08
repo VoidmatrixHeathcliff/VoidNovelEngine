@@ -27,7 +27,8 @@ void init_util_module(lua_State* L)
 				// usertype
 				.beginClass<CString>("CString")
 					.addFunction("get", +[](const CString* str) { return str->val; })
-					.addFunction("set", +[](CString* str, const char* val) { str->val = val; })
+					.addFunction("raw", +[](const CString* str) { return (void*)str->val.data(); })
+					.addFunction("set", +[](CString* str, const std::string& val) { str->val = val; })
 					.addFunction("empty", +[](CString* str) { return str->val.empty(); })
 					.addFunction("__len", +[](const CString* str) { return str->val.size(); })
 					.addFunction("__tostring", +[](const CString* str) { return str->val; })
@@ -109,6 +110,13 @@ void init_util_module(lua_State* L)
 						return result;
 					})
 				.addFunction("ShellExecute", Util_ShellExecute)
+				.addFunction("GetExeFilePath", +[]() 
+					{
+						wchar_t filename[MAX_PATH];
+						if (GetModuleFileName(NULL, filename, MAX_PATH) > 0) 
+							return convert.to_bytes(filename);
+						return std::string();
+					})
 			.endNamespace()
 		.endNamespace();
 }

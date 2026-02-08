@@ -10,6 +10,7 @@ local TextWrapper = require("application.framework.text_wrapper")
 local ColorHelper = require("application.framework.color_helper")
 local GlobalContext = require("application.framework.global_context")
 local ScreenManager = require("application.framework.screen_manager")
+local SettingsManager = require("application.framework.settings_manager")
 local ResourcesManager = require("application.framework.resources_manager")
 
 local texture_preview = nil
@@ -41,6 +42,7 @@ module.on_update = function(self, delta)
     imgui.Begin("预览视图")
         local pos_begin = imgui.GetCursorPos()
         local size_content = imgui.GetContentRegionAvail()
+        local editor_zoom_ratio = SettingsManager.get("editor_zoom_ratio")
         if GlobalContext.is_preview_in_editor then
             local scale = math.min(size_content.x / GlobalContext.width_game_window, size_content.y / GlobalContext.height_game_window)
             local size_image = imgui.ImVec2(GlobalContext.width_game_window * scale, GlobalContext.height_game_window * scale)
@@ -52,7 +54,8 @@ module.on_update = function(self, delta)
         end
         imgui.SetCursorPos(imgui.ImVec2(pos_begin.x + 10, pos_begin.y + 10))
         local id_icon = "file-copy-line" if not GlobalContext.is_preview_in_editor then id_icon = "file-copy-fill" end
-        if imgui.ImageButton("preview_in_editor", ResourcesManager.find_icon(id_icon), imgui.ImVec2(20, 20), nil, nil, nil, nil) then
+        if imgui.ImageButton("preview_in_editor", ResourcesManager.find_icon(id_icon), 
+            imgui.ImVec2(20 * editor_zoom_ratio, 20 * editor_zoom_ratio), nil, nil, nil, nil) then
             GlobalContext.toggle_preview_mode()
         end
         local text_on_hovered = "切换为独立窗口预览"
@@ -60,7 +63,8 @@ module.on_update = function(self, delta)
         ImGUIHelper.HoveredTooltip(text_on_hovered)
         imgui.SameLine()
         imgui.BeginDisabled(not GlobalContext.is_debug_game)
-            if imgui.ImageButton("simulate_interaction", ResourcesManager.find_icon("hand"), imgui.ImVec2(20, 20), nil, nil, nil, nil) then
+            if imgui.ImageButton("simulate_interaction", ResourcesManager.find_icon("hand"), 
+                imgui.ImVec2(20 * editor_zoom_ratio, 20 * editor_zoom_ratio), nil, nil, nil, nil) then
                 GlobalContext.is_simulated_interaction = true
             end
             ImGUIHelper.HoveredTooltip("点击模拟互动")

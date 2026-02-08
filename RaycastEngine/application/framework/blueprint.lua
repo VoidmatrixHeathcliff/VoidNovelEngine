@@ -12,6 +12,7 @@ local NodeFactory = require("application.framework.node_factory")
 local UndoManager = require("application.framework.undo_manager")
 local ModifyManager = require("application.framework.modify_manager")
 local GlobalContext = require("application.framework.global_context")
+local SettingsManager = require("application.framework.settings_manager")
 local ResourcesManager = require("application.framework.resources_manager")
 
 local color_link_accepted = imgui.ImVec4(imgui.ImColor(45, 225, 45, 255).value)
@@ -219,18 +220,12 @@ local function load_document(self)
     local file = io.open(util.UTF8ToGBK(self._path), "r")
     if not file then
         LogManager.log(string.format("无法打开流程文件：%s", self._path), "error")
-        -- 打开失败时弹窗提醒
-        -- sdl.ShowSimpleMessageBox(sdl.MessageBoxFlOags.ERROR, "打开失败", 
-        --     string.format("无法打开文件：%s", self._path), GlobalContext.window)
         return
     end
     local result, data = json.ParseToLua(file:read("*a"))
     file:close()
     if not file then
         LogManager.log(string.format("无法解析流程文件：%s", self._path), "error")
-        -- 解析失败时弹窗提醒
-        -- sdl.ShowSimpleMessageBox(sdl.MessageBoxFlags.ERROR, "解析失败", 
-        --     string.format("无法解析文件：%s", self._path), GlobalContext.window)
         return
     end
     imgui.NodeEditor.SetCurrentEditor(self._context)
@@ -242,7 +237,7 @@ local function load_document(self)
     for _, link_data in pairs(data.link_pool) do
         self._link_pool[link_data.id] = load_link(self, link_data)
     end
-    LogManager.log(string.format("成功加载流程文件：%s", self._path), "success")
+    LogManager.log(string.format("成功加载流程脚本文件：%s", self._path), "success")
 end
 
 -- 保存流程
@@ -257,8 +252,8 @@ local function save_document(self)
         return
     end
     -- 如果没有更新过则更新一次初始化位置信息等数据
+    imgui.NodeEditor.SetCurrentEditor(self._context)
     if not self._ticked then 
-        imgui.NodeEditor.SetCurrentEditor(self._context)
         imgui.NodeEditor.Begin(self._id)
             self:on_tick()
         imgui.NodeEditor.End()
@@ -279,9 +274,7 @@ local function save_document(self)
     -- 打开文件写入
     local file = io.open(util.UTF8ToGBK(self._path), "w")
     if not file then
-        -- 写入失败时弹窗提醒
-        sdl.ShowSimpleMessageBox(sdl.MessageBoxFlags.ERROR, "保存失败", 
-            string.format("无法打开文件：%s", self._path), GlobalContext.window)
+        LogManager.log(string.format("无法打开流程文件：%s", self._path), "error")
         ModifyManager.set_context(prev_context)
         return
     end
@@ -434,6 +427,7 @@ local function on_tick(self)
                 imgui.EndPopup()
             end
         end
+        imgui.PushFont(GlobalContext.font_imgui, math.floor(18 * SettingsManager.get("editor_zoom_ratio")))
         if imgui.BeginPopup("CreateNewNode") then
             local flags_default = imgui.TreeNodeFlags.SpanFullWidth
             local flags_open = imgui.TreeNodeFlags.DefaultOpen | imgui.TreeNodeFlags.SpanFullWidth
@@ -453,6 +447,7 @@ local function on_tick(self)
                 self:_menu_item_create_node(NodeDef.transition_fade_in, mouse_pos)
                 self:_menu_item_create_node(NodeDef.transition_fade_out, mouse_pos)
                 self:_menu_item_create_node(NodeDef.show_choice_button, mouse_pos)
+                self:_menu_item_create_node(NodeDef.play_video, mouse_pos)
                 imgui.TreePop()
             end
             if imgui.TreeNode("音频播控", flags_open) then
@@ -465,6 +460,7 @@ local function on_tick(self)
                 self:_menu_item_create_node(NodeDef.branch, mouse_pos)
                 self:_menu_item_create_node(NodeDef.loop, mouse_pos)
                 self:_menu_item_create_node(NodeDef.switch_scene, mouse_pos)
+                self:_menu_item_create_node(NodeDef.switch_to_game_scene, mouse_pos)
                 imgui.TreePop()
             end
             if imgui.TreeNode("对象功能", flags_default) then
@@ -499,6 +495,7 @@ local function on_tick(self)
             if imgui.TreeNode("资产节点", flags_default) then
                 self:_menu_item_create_node(NodeDef.font, mouse_pos)
                 self:_menu_item_create_node(NodeDef.audio, mouse_pos)
+                self:_menu_item_create_node(NodeDef.video, mouse_pos)
                 self:_menu_item_create_node(NodeDef.shader, mouse_pos)
                 self:_menu_item_create_node(NodeDef.texture, mouse_pos)
                 imgui.TreePop()
@@ -512,6 +509,7 @@ local function on_tick(self)
             end
             imgui.EndPopup()
         end
+        imgui.PopFont()
     imgui.NodeEditor.Resume()
     if not self._ticked then
         self._ticked = true
@@ -538,6 +536,7 @@ local function on_update(self, delta)
         if not GlobalContext.is_debug_game then
             GlobalContext.current_blueprint = self
         end
+        imgui.PushFont(GlobalContext.font_imgui, 18)
         imgui.NodeEditor.SetCurrentEditor(self._context)
         imgui.NodeEditor.Begin(self._id)
             self:on_tick()
@@ -554,7 +553,6 @@ local function on_update(self, delta)
             imgui.NodeEditor.ShowAllNodeID()
         end
         if imgui.BeginDragDropTarget() then
-            -- imgui.SetTooltip("释放以创建节点")
             local payload = imgui.AcceptDragDropPayload("asset")
             if payload then
                 local node = nil
@@ -562,6 +560,8 @@ local function on_update(self, delta)
                     node = _create_node_by_def(self, NodeDef.font, mouse_pos)
                 elseif payload.type == "audio" then
                     node = _create_node_by_def(self, NodeDef.audio, mouse_pos)
+                elseif payload.type == "video" then
+                    node = _create_node_by_def(self, NodeDef.video, mouse_pos)
                 elseif payload.type == "shader" then
                     node = _create_node_by_def(self, NodeDef.shader, mouse_pos)
                 elseif payload.type == "texture" then
@@ -571,6 +571,7 @@ local function on_update(self, delta)
             end
             imgui.EndDragDropTarget()
         end
+        imgui.PopFont()
         if imgui.GetIO().KeyCtrl then
             if not imgui.IsAnyItemActive() then
                 -- 处理撤销重做

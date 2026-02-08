@@ -290,6 +290,15 @@ void init_sdl_module(lua_State* L)
 						{ return new (ptr) SDL_Color({ r, g, b, a }); },
 						+[](void* ptr) { return new (ptr) SDL_Color(); })
 				.endClass()
+				.beginClass<SDL_Rect>("Rect")
+					.addProperty("x", &SDL_Rect::x, &SDL_Rect::x)
+					.addProperty("y", &SDL_Rect::y, &SDL_Rect::y)
+					.addProperty("w", &SDL_Rect::w, &SDL_Rect::w)
+					.addProperty("h", &SDL_Rect::h, &SDL_Rect::h)
+					.addConstructor(+[](void* ptr, int x, int y, int width, int height)
+						{ return new (ptr) SDL_Rect({ x, y, width, height }); },
+						+[](void* ptr) { return new (ptr) SDL_Rect(); })
+				.endClass()
 				.beginClass<SDL_Window>("Window")
 					
 				.endClass()
@@ -335,6 +344,21 @@ void init_sdl_module(lua_State* L)
 				// basic
 				.addFunction("Init", SDL_Init)
 				.addFunction("Quit", SDL_Quit)
+				.addFunction("Delay", SDL_Delay)
+				.addFunction("GetBasePath", +[]() 
+					{ 
+						char* path = SDL_GetBasePath();
+						std::string str_path = path;
+						SDL_free(path);
+						return str_path;
+					})
+				.addFunction("GetPrefPath", +[](const char* org, const char* app) 
+					{ 
+						char* path = SDL_GetPrefPath(org, app);
+						std::string str_path = path;
+						SDL_free(path);
+						return str_path;
+					})
 				.addFunction("SetHint", +[](const char* name, const char* value) { return SDL_SetHint(name, value) == SDL_TRUE;})
 				.addFunction("ShowSimpleMessageBox", SDL_ShowSimpleMessageBox)
 				.addFunction("ShowConfirmBox", SDL_ShowConfirmBox)
@@ -363,11 +387,30 @@ void init_sdl_module(lua_State* L)
 				.addFunction("RenderReadPixels", SDL_RenderReadPixels)
 				.addFunction("GetError", SDL_GetError)
 				.addFunction("PollEvent", SDL_PollEvent)
+				.addFunction("SetClipboardText", SDL_SetClipboardText)
+				.addFunction("GetClipboardText", +[]() 
+					{
+						char* buffer = SDL_GetClipboardText();
+						std::string str_content = buffer; SDL_free(buffer);
+						return str_content;
+					})
 				.addFunction("SetRenderTarget", SDL_SetRenderTarget)
 				.addFunction("GetRenderTarget", SDL_GetRenderTarget)
 				.addFunction("SetRenderDrawColor", SDL_SetRenderDrawColor)
 				.addFunction("RenderClear", SDL_RenderClear)
 				.addFunction("RenderPresent", SDL_RenderPresent)
+				.addFunction("GetNumVideoDisplays", SDL_GetNumVideoDisplays)
+				.addFunction("GetDesktopDisplayMode", +[](int idx)
+					{
+						SDL_DisplayMode mode; SDL_GetDesktopDisplayMode(idx, &mode);
+						return std::map<std::string, int>({ {"format", mode.format}, 
+							{ "refresh_rate", mode.refresh_rate }, { "w", mode.w }, { "h", mode.h } });
+					})
+				.addFunction("GetDisplayBounds", +[](int idx)
+					{
+						SDL_Rect rect; SDL_GetDisplayBounds(idx, &rect);
+						return rect;
+					})
 				// mixer
 				.addFunction("InitMIX", Mix_Init)
 				.addFunction("QuitMIX", Mix_Quit)
@@ -380,6 +423,7 @@ void init_sdl_module(lua_State* L)
 				.addFunction("FadeOutMusic", Mix_FadeOutMusic)
 				.addFunction("ResumeMusic", Mix_ResumeMusic)
 				.addFunction("LoadWAV", Mix_LoadWAV)
+				.addFunction("FreeChunk", Mix_FreeChunk)
 				.addFunction("PlayChannel", Mix_PlayChannel)
 				.addFunction("FadeInChannel", Mix_FadeInChannel)
 				.addFunction("HaltChannel", Mix_HaltChannel)
