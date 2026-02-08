@@ -83,7 +83,8 @@ VoidNovelEngine工具的二进制版本可在[GitHub发布页面](https://github
 
 ## 交流反馈
 
-+ VoidNovelEngine讨论组：[932941346](https://qun.qq.com/universal-share/share?ac=1&authKey=c9GNKInVZCVqtwwPd91MlcAyLKuoUcejnVgwfzx5O%2FC40r7wo9gxizghKBPLscRO&busi_data=eyJncm91cENvZGUiOiI5MzI5NDEzNDYiLCJ0b2tlbiI6Im0vWktZcmlsS0VyMkY4dmhQM2E2dUltYjZMTUZQcFViTCt6TTVENDdHbGVNaEZyR01yMWFuOW1hLzd4ckM4cUYiLCJ1aW4iOiIxODA4NDY5MTU1In0%3D&data=YqhIvkP8oUejNypvckzqpEvGefu1H6Uhnxx7FIsLJVN41xlSedIF854M_CBCh2dbeNkD7ybVdgpxE5Qj7laAKg&svctype=4&tempid=h5_group_info)
++ VoidNovelEngine官方1群：[932941346](https://qm.qq.com/q/odwOt62qie)
++ VoidNovelEngine官方2群：[191086491](https://qm.qq.com/q/bvBNOQdMGY)
 
 ## 三方依赖
 
