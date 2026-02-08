@@ -4,7 +4,7 @@ local sdl = Engine.SDL
 local rl = Engine.Raylib
 local imgui = Engine.ImGUI
 
-module.debug = true
+module.debug = false
 
 module.shader_postprocess = nil
 
