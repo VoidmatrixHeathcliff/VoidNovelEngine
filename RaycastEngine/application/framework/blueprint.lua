@@ -18,8 +18,202 @@ local ResourcesManager = require("application.framework.resources_manager")
 local color_link_accepted = imgui.ImVec4(imgui.ImColor(45, 225, 45, 255).value)
 local color_link_rejected = imgui.ImVec4(imgui.ImColor(225, 45, 45, 255).value)
 
+local save_link
+local _can_link
+
+local function _deep_copy(val)
+    if type(val) ~= "table" then return val end
+    local out = {}
+    for k, v in pairs(val) do
+        out[_deep_copy(k)] = _deep_copy(v)
+    end
+    return out
+end
+
+local function _get_selected_node_id_set(self)
+    local set = {}
+    for _, node in pairs(self._node_pool) do
+        if imgui.NodeEditor.IsNodeSelected(node._id) then
+            set[node._id:get()] = true
+        end
+    end
+    return set
+end
+
+local function _build_dump_data(self, only_selected)
+    local dump_data = {
+        max_uid = self._max_uid,
+        node_pool = {},
+        link_pool = {},
+        is_open = self._is_open.val,
+    }
+
+    local selected_set = nil
+    if only_selected then
+        selected_set = _get_selected_node_id_set(self)
+    end
+
+    for id, node in pairs(self._node_pool) do
+        if (not selected_set) or selected_set[id] then
+            table.insert(dump_data.node_pool, node:on_save())
+        end
+    end
+
+    if selected_set then
+        for _, link in pairs(self._link_pool) do
+            local owner_in = link.input._owner_id:get()
+            local owner_out = link.output._owner_id:get()
+            if selected_set[owner_in] and selected_set[owner_out] then
+                table.insert(dump_data.link_pool, save_link(link))
+            end
+        end
+    else
+        for _, link in pairs(self._link_pool) do
+            table.insert(dump_data.link_pool, save_link(link))
+        end
+    end
+
+    return dump_data
+end
+
+local function _validate_blueprint_clipboard_data(data)
+    if type(data) ~= "table" then
+        return false, "剪贴板内容不是Lua对象/JSON对象"
+    end
+    if type(data.node_pool) ~= "table" then
+        return false, "缺少字段：node_pool"
+    end
+    if type(data.link_pool) ~= "table" then
+        return false, "缺少字段：link_pool"
+    end
+    if data.max_uid ~= nil and type(data.max_uid) ~= "number" then
+        return false, "字段类型错误：max_uid"
+    end
+    if data.is_open ~= nil and type(data.is_open) ~= "boolean" then
+        return false, "字段类型错误：is_open"
+    end
+    return true, nil
+end
+
+local function _spawn_link(self, link, can_undo)
+    local function _spawn()
+        self._link_pool[link.id:get()] = link
+        link.input._linked_pin_id = link.output._id
+        link.output._linked_pin_id = link.input._id
+    end
+    local function _despawn()
+        self._link_pool[link.id:get()] = nil
+        link.input._linked_pin_id = nil
+        link.output._linked_pin_id = nil
+    end
+    _spawn()
+    if can_undo then
+        UndoManager.record(_despawn, _spawn)
+    end
+end
+
+local function _paste_nodes_from_data(self, data, mouse_pos)
+    local ok, err = _validate_blueprint_clipboard_data(data)
+    if not ok then
+        return false, err
+    end
+
+    local node_data_list = data.node_pool
+    if #node_data_list == 0 then
+        return false, "node_pool为空"
+    end
+
+    local min_x, min_y = nil, nil
+    for _, node_data in pairs(node_data_list) do
+        if type(node_data) == "table" and type(node_data.position) == "table" then
+            local x, y = node_data.position.x or 0, node_data.position.y or 0
+            if not min_x or x < min_x then min_x = x end
+            if not min_y or y < min_y then min_y = y end
+        end
+    end
+    min_x, min_y = min_x or 0, min_y or 0
+
+    local map_node_id = {}
+    local map_pin_id = {}
+    local created_nodes = {}
+
+    for _, node_data in pairs(node_data_list) do
+        if type(node_data) == "table" and node_data.type_id ~= "entry" then
+            local data_new = _deep_copy(node_data)
+
+            local old_node_id = data_new.id
+            local new_node_id = self:gen_next_uid()
+            data_new.id = new_node_id
+            map_node_id[old_node_id] = new_node_id
+
+            if type(data_new.position) ~= "table" then data_new.position = { x = 0, y = 0 } end
+            data_new.position.x = (data_new.position.x or 0) - min_x + mouse_pos.x
+            data_new.position.y = (data_new.position.y or 0) - min_y + mouse_pos.y
+
+            if type(data_new.input_pin_list) == "table" then
+                for _, pin_data in pairs(data_new.input_pin_list) do
+                    if type(pin_data) == "table" then
+                        local old_pin_id = pin_data.id
+                        local new_pin_id = self:gen_next_uid()
+                        pin_data.id = new_pin_id
+                        map_pin_id[old_pin_id] = new_pin_id
+                    end
+                end
+            end
+            if type(data_new.output_pin_list) == "table" then
+                for _, pin_data in pairs(data_new.output_pin_list) do
+                    if type(pin_data) == "table" then
+                        local old_pin_id = pin_data.id
+                        local new_pin_id = self:gen_next_uid()
+                        pin_data.id = new_pin_id
+                        map_pin_id[old_pin_id] = new_pin_id
+                    end
+                end
+            end
+
+            local node = NodeFactory.create(self, data_new.type_id, data_new)
+            self:spawn_node(node, true)
+            table.insert(created_nodes, node)
+        end
+    end
+
+    local created_link_count = 0
+    if type(data.link_pool) == "table" then
+        for _, link_data in pairs(data.link_pool) do
+            if type(link_data) == "table" then
+                local old_in = link_data.input_pin_id
+                local old_out = link_data.output_pin_id
+                local new_in = map_pin_id[old_in]
+                local new_out = map_pin_id[old_out]
+                if new_in and new_out then
+                    local pin_input = self._pin_pool[new_in]
+                    local pin_output = self._pin_pool[new_out]
+                    if pin_input and pin_output and _can_link(pin_input, pin_output) then
+                        local new_link_id = self:gen_next_uid()
+                        local link = {
+                            id = imgui.NodeEditor.LinkId(new_link_id),
+                            input = pin_input,
+                            output = pin_output,
+                        }
+                        _spawn_link(self, link, true)
+                        created_link_count = created_link_count + 1
+                    end
+                end
+            end
+        end
+    end
+
+    imgui.NodeEditor.ClearSelection()
+    for _, node in ipairs(created_nodes) do
+        imgui.NodeEditor.SelectNode(node._id, true)
+    end
+    imgui.NodeEditor.NavigateToSelection(true)
+
+    return true, string.format("已粘贴 %d 个节点，%d 条连接", #created_nodes, created_link_count)
+end
+
 -- 检查指定引脚对象是否可以被连接
-local function _can_link(pin_input, pin_output)
+_can_link = function(pin_input, pin_output)
     -- 检查两个引脚是否同处一个节点
     if pin_input._owner_id:get() == pin_output._owner_id:get() then
         return false
@@ -206,7 +400,7 @@ local function load_link(blueprint, data)
 end
 
 -- 保存连接
-local function save_link(link)
+save_link = function(link)
     return 
     {
         id = link.id:get(),
@@ -580,6 +774,43 @@ local function on_update(self, delta)
                 elseif imgui.IsKeyPressed(imgui.ImGuiKey.Y, false) then
                     UndoManager.redo()
                 end
+                -- 处理复制/粘贴（节点）
+                if imgui.IsKeyPressed(imgui.ImGuiKey.C, false) then
+                    local selected_set = _get_selected_node_id_set(self)
+                    local has_selection = next(selected_set) ~= nil
+                    local dump_data = _build_dump_data(self, has_selection)
+                    local str_json = json.PrintFromLua(dump_data)
+                    rl.SetClipboardText(str_json)
+                    self._clipboard_preview_open.val = true
+                    self._clipboard_preview_text:set(str_json)
+                    if has_selection then
+                        self._clipboard_preview_status:set(string.format("已复制选中节点：%d 个节点，%d 条连接", #dump_data.node_pool, #dump_data.link_pool))
+                    else
+                        self._clipboard_preview_status:set(string.format("未选择节点，已复制整个流程：%d 个节点，%d 条连接", #dump_data.node_pool, #dump_data.link_pool))
+                    end
+                elseif imgui.IsKeyPressed(imgui.ImGuiKey.V, false) then
+                    local clip = rl.GetClipboardText()
+                    clip = clip or ""
+                    self._clipboard_preview_open.val = true
+                    self._clipboard_preview_text:set(clip)
+
+                    local ok_parse, parsed_or_err = json.ParseToLua(clip)
+                    if not ok_parse then
+                        self._clipboard_preview_status:set(string.format("剪贴板解析失败：%s", tostring(parsed_or_err)))
+                    else
+                        local ok_schema, err_schema = _validate_blueprint_clipboard_data(parsed_or_err)
+                        if not ok_schema then
+                            self._clipboard_preview_status:set(string.format("剪贴板内容不是流程格式：%s", tostring(err_schema)))
+                        else
+                            local ok_paste, paste_msg = _paste_nodes_from_data(self, parsed_or_err, mouse_pos)
+                            if ok_paste then
+                                self._clipboard_preview_status:set(paste_msg)
+                            else
+                                self._clipboard_preview_status:set(string.format("粘贴失败：%s", tostring(paste_msg)))
+                            end
+                        end
+                    end
+                end
                 -- 处理导航到内容
                 if imgui.IsKeyPressed(imgui.ImGuiKey.R, false) then
                     imgui.NodeEditor.NavigateToContent()
@@ -590,6 +821,20 @@ local function on_update(self, delta)
                 self:save_document()
             end
         end
+
+        if self._clipboard_preview_open and self._clipboard_preview_open.val then
+            imgui.SetNextWindowSize(imgui.ImVec2(520, 360), imgui.ImGuiCond.FirstUseEver)
+            if imgui.Begin(string.format("剪贴板检查 - %s", self._id), self._clipboard_preview_open) then
+                imgui.SeparatorText("状态")
+                imgui.PushTextWrapPos(0)
+                imgui.Text(self._clipboard_preview_status:get())
+                imgui.PopTextWrapPos()
+                imgui.SeparatorText("内容预览")
+                imgui.InputTextMultiline("##clipboard_preview", self._clipboard_preview_text, imgui.ImVec2(0, 0), imgui.InputTextFlags.ReadOnly)
+            end
+            imgui.End()
+        end
+
         imgui.EndTabItem()
         UndoManager.set_context()
     end
@@ -646,6 +891,10 @@ module.new = function(path)
         _context = imgui.NodeEditor.Create(config),                         -- 流程编辑器上下文
         _undo_context = UndoManager.create_context(),                       -- 撤销管理器上下文
         _modify_context = ModifyManager.create_context(is_create_file),     -- 修改管理器上下文
+
+        _clipboard_preview_open = imgui.Bool(false),                         -- 是否显示剪贴板检查窗口
+        _clipboard_preview_text = util.CString(""),                          -- 剪贴板原始文本
+        _clipboard_preview_status = util.CString(""),                        -- 状态/错误信息
 
         _remove_link_by_link_id = _remove_link_by_link_id,                  -- 通过连接ID移除连接对象
         _remove_link_by_pin_id = _remove_link_by_pin_id,                    -- 通过引脚ID移除连接对象
