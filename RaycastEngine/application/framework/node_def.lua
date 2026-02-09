@@ -106,7 +106,7 @@ module["vector2"] =
 module["color"] = 
 {
     type_id = "color",
-    icon_id = "palette-line",
+    icon_id = "color-filter-line",
     color = ColorHelper.ValueTypeColorPool.color,
     name = "颜色",
     comment = nil,
@@ -235,6 +235,15 @@ module["audio"] =
     icon_id = "headphone-fill",
     color = ColorHelper.AssetTypeColorPool.audio,
     name = "音频引用",
+    comment = nil,
+}
+
+module["video"] = 
+{
+    type_id = "video",
+    icon_id = "movie-2-fill",
+    color = ColorHelper.AssetTypeColorPool.video,
+    name = "视频引用",
     comment = nil,
 }
 
@@ -425,6 +434,24 @@ module["show_choice_button"] =
     color = imgui.ImVec4(imgui.ImColor(0, 148, 200, 255).value),
     name = "显示分支按钮",
     comment = "玩家点击对应选项后自动收起",
+}
+
+module["play_video"] = 
+{
+    type_id = "play_video",
+    icon_id = "movie-2-fill",
+    color = imgui.ImVec4(imgui.ImColor(0, 148, 200, 255).value),
+    name = "播放视频",
+    comment = "使用全屏效果播放制定的视频资产",
+}
+
+module["switch_to_game_scene"] = 
+{
+    type_id = "switch_to_game_scene",
+    icon_id = "game-2-fill",
+    color = imgui.ImVec4(imgui.ImColor(233, 82, 149, 255).value),
+    name = "切换到自定义场景",
+    comment = "将当前场景变更为脚本扩展的场景",
 }
 
 return module

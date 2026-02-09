@@ -15,9 +15,11 @@ local LogManager = require("application.framework.log_manager")
 local TextWrapper = require("application.framework.text_wrapper")
 local ColorHelper = require("application.framework.color_helper")
 local UndoManager = require("application.framework.undo_manager")
+local VideoDecoder = require("application.framework.video_decoder")
 local GlobalContext = require("application.framework.global_context")
 local ModifyManager = require("application.framework.modify_manager")
 local BranchSelector = require("application.framework.branch_selector")
+local SettingsManager = require("application.framework.settings_manager")
 local ResourcesManager = require("application.framework.resources_manager")
 
 local construct_func_pool = {}
@@ -28,12 +30,14 @@ local size_icon_max <const> = imgui.ImVec2(28, 28)
 
 -- 将ImVec4转换为SDLColor
 local function _convert_imvec4_to_sdl_color(vec4)
-    return sdl.Color(math.floor(vec4.x * 255), math.floor(vec4.y * 255), math.floor(vec4.z * 255), math.floor(vec4.w * 255))
+    return sdl.Color(math.clamp(math.floor(vec4.x * 255), 0, 255), math.clamp(math.floor(vec4.y * 255), 0, 255), 
+        math.clamp(math.floor(vec4.z * 255), 0, 255), math.clamp(math.floor(vec4.w * 255), 0, 255))
 end
 
 -- 将ImVec4转换为RaylibColor
 local function _convert_imvec4_to_raylib_color(vec4)
-    return rl.Color(math.floor(vec4.x * 255), math.floor(vec4.y * 255), math.floor(vec4.z * 255), math.floor(vec4.w * 255))
+    return rl.Color(math.clamp(math.floor(vec4.x * 255), 0, 255), math.clamp(math.floor(vec4.y * 255), 0, 255), 
+        math.clamp(math.floor(vec4.z * 255), 0, 255), math.clamp(math.floor(vec4.w * 255), 0, 255))
 end
 
 -- 向节点附加引脚的工具函数
@@ -321,7 +325,7 @@ construct_func_pool["switch_scene"] = function(blueprint, data)
     local node = _base_constructor(blueprint, data, "switch_scene", 0, ResourcesManager.find_icon(NodeDef.switch_scene.icon_id), 
         NodeDef.switch_scene.color, NodeDef.switch_scene.name, NodeDef.switch_scene.comment)
     _attach_pin(node, data and data.input_pin_list[1] or nil, "flow", false)
-    _attach_pin(node, data and data.input_pin_list[2] or nil, "string", false, "场景ID")
+    _attach_pin(node, data and data.input_pin_list[2] or nil, "string", false, "场景ID", {width_input = 120})
     node.on_exetute = function(self, scene)
         local id_scene = self._input_pin_list[2]:get_val()
         for _, blueprint in ipairs(GlobalContext.blueprint_list) do
@@ -605,6 +609,12 @@ end
 construct_func_pool["audio"] = function(blueprint, data)
     local node = _base_constructor(blueprint, data, "audio")
     _attach_pin(node, data and data.output_pin_list[1] or nil, "audio", true, nil, {width_input = 100})
+    return node
+end
+
+construct_func_pool["video"] = function(blueprint, data)
+    local node = _base_constructor(blueprint, data, "video")
+    _attach_pin(node, data and data.output_pin_list[1] or nil, "video", true, nil, {width_input = 100})
     return node
 end
 
@@ -925,8 +935,7 @@ construct_func_pool["show_letterboxing"] = function(blueprint, data)
             letterboxing._metaname = "Letterboxing"
             letterboxing.progress = 0
             letterboxing.on_render = function(self)
-                local full_height <const> = node._input_pin_list[2]:get_val()
-                local rect = rl.Rectangle(0, 0, GlobalContext.width_game_window, full_height * self.progress)
+                local rect = rl.Rectangle(0, 0, GlobalContext.width_game_window, self.full_height * self.progress)
                 rl.DrawRectangleRec(rect, ColorHelper.BLACK)
                 rect.y = GlobalContext.height_game_window - rect.height
                 rl.DrawRectangleRec(rect, ColorHelper.BLACK)
@@ -939,6 +948,7 @@ construct_func_pool["show_letterboxing"] = function(blueprint, data)
             end
             scene:add_object(letterboxing, id_game_object, 80)
         end
+        letterboxing.full_height = node._input_pin_list[2]:get_val()
         local duration_ease = self._input_pin_list[3]:get_val()
         if duration_ease > 0 then
             scene:add_object(Tween.new(letterboxing, "progress", 0, 1, duration_ease, function()
@@ -1035,13 +1045,14 @@ construct_func_pool["show_subtitle"] = function(blueprint, data)
         local text = self._input_pin_list[2]:get_val()
         local font_obj = self._input_pin_list[5]:get_val()
         local font_size = self._input_pin_list[6]:get_val()
+        if #text == 0 then text = " " end
         if not font_obj then
             LogManager.log(string.format("节点[#%d]：无效的字体对象输入", self._id:get()), 
                 "error", {blueprint = self._blueprint._id, id = self._id:get()})
             GlobalContext.stop_debug()
             return
         end
-        if font_size < 1 then
+        if not font_size or font_size < 1 then
             LogManager.log(string.format("节点[#%d]：无效的字号输入", self._id:get()), 
                 "error", {blueprint = self._blueprint._id, id = self._id:get()})
             GlobalContext.stop_debug()
@@ -1049,8 +1060,7 @@ construct_func_pool["show_subtitle"] = function(blueprint, data)
         end
         local font = font_obj:get(font_size)
         local color_vec4 = self._input_pin_list[7]:get_val()
-        local color_sdl = sdl.Color(math.floor(255 * color_vec4.x), math.floor(255 * color_vec4.y), 
-            math.floor(255 * color_vec4.z), math.floor(255 * color_vec4.w))
+        local color_sdl = _convert_imvec4_to_sdl_color(color_vec4)
         local interval = self._input_pin_list[3]:get_val() if interval < 0 then interval = 0 end
         subtitle.text_object = TextWrapper.new(font, util.UTF8Sub(text, 0, 1), color_sdl)
         scene:add_object(Timer.new(interval, function(timer)
@@ -1138,7 +1148,7 @@ construct_func_pool["show_dialog_box"] = function(blueprint, data)
             GlobalContext.stop_debug()
             return
         end
-        if font_size_name < 1 or font_size_dialog < 1 then
+        if not font_size_name or not font_size_dialog or font_size_name < 1 or font_size_dialog < 1 then
             LogManager.log(string.format("节点[#%d]：无效的字号输入", self._id:get()), 
                 "error", {blueprint = self._blueprint._id, id = self._id:get()})
             GlobalContext.stop_debug()
@@ -1422,7 +1432,7 @@ construct_func_pool["show_choice_button"] = function(blueprint, data)
             GlobalContext.stop_debug()
             return
         end
-        if font_size < 1 then
+        if not font_size or font_size < 1 then
             LogManager.log(string.format("节点[#%d]：无效的字号输入", self._id:get()), 
                 "error", {blueprint = self._blueprint._id, id = self._id:get()})
             GlobalContext.stop_debug()
@@ -1453,6 +1463,106 @@ construct_func_pool["show_choice_button"] = function(blueprint, data)
         choice_button.set_callback(function(idx_clicked)
             _execute_next_node(self, idx_clicked)
         end)
+    end
+    return node
+end
+
+construct_func_pool["play_video"] = function(blueprint, data)
+    local node = _base_constructor(blueprint, data, "play_video", 0, 
+        ResourcesManager.find_icon(NodeDef.play_video.icon_id), 
+        NodeDef.play_video.color, NodeDef.play_video.name, NodeDef.play_video.comment)
+    _attach_pin(node, data and data.input_pin_list[1] or nil, "flow", false)
+    _attach_pin(node, data and data.input_pin_list[2] or nil, "video", false)
+    _attach_pin(node, data and data.input_pin_list[3] or nil, "int", false, "帧率")
+    _attach_pin(node, data and data.input_pin_list[4] or nil, "vector2", false, "分辨率", {width_input = 100})
+    _attach_pin(node, data and data.input_pin_list[5] or nil, "float", false, "音量")
+    _attach_pin(node, data and data.output_pin_list[1] or nil, "flow", true, "       ")
+    if not data then
+        node._input_pin_list[3]:set_val(30)
+        node._input_pin_list[4]:set_val(imgui.ImVec2(1920, 1080))
+        node._input_pin_list[5]:set_val(1.0)
+    end
+    node.on_exetute = function(self, scene)
+        local video = self._input_pin_list[2]:get_val()
+        local frame_rate = node._input_pin_list[3]:get_val()
+        local size = node._input_pin_list[4]:get_val()
+        local volume = math.clamp(node._input_pin_list[5]:get_val(), 0, 1)
+        if frame_rate < 1 then
+            LogManager.log(string.format("节点[#%d]：帧率必须为正整数", self._id:get()), 
+                "error", {blueprint = self._blueprint._id, id = self._id:get()})
+            GlobalContext.stop_debug()
+            return
+        end
+        if not video then
+            LogManager.log(string.format("节点[#%d]：无效的视频对象输入", self._id:get()), 
+                "error", {blueprint = self._blueprint._id, id = self._id:get()})
+            GlobalContext.stop_debug()
+            return
+        end
+        local video_decoder = VideoDecoder.new(video, math.floor(size.x), math.floor(size.y), frame_rate)
+        if not video_decoder then
+            LogManager.log(string.format("节点[#%d]：无法正确解码视频对象", self._id:get()), 
+                "error", {blueprint = self._blueprint._id, id = self._id:get()})
+            GlobalContext.stop_debug()
+            return
+        end
+        sdl.VolumeChunk(video_decoder.audio, math.floor(volume * sdl.MAX_VOLUME))
+        local channel = sdl.PlayChannel(-1, video_decoder.audio, 0)
+        if channel == -1 then
+            LogManager.log(string.format("节点[#%d]：视频音频播放失败", self._id:get()), 
+                "error", {blueprint = self._blueprint._id, id = self._id:get()})
+            video_decoder:close()
+            GlobalContext.stop_debug()
+            return
+        end
+        local video_renderer = GameObject.new()
+        video_renderer._metaname = "VideoRenderer"
+        video_renderer.on_render = function(self)
+            rl.ClearBackground(ColorHelper.BLACK)
+            local width_screen, height_screen = SettingsManager.get("width_game_window"), SettingsManager.get("height_game_window")
+            local scale = math.min(width_screen / video_decoder.width, height_screen / video_decoder.height)
+            local rect_dst = rl.Rectangle((width_screen - (video_decoder.width * scale)) * 0.5, 
+                (height_screen - (video_decoder.height * scale)) * 0.5, video_decoder.width * scale, video_decoder.height * scale)
+            local rect_src = rl.Rectangle(0, 0, video_decoder.width, video_decoder.height) 
+            rl.DrawTexturePro(video_decoder.texture, rect_src, rect_dst, rl.Vector2(0, 0), 0, ColorHelper.WHITE)  
+        end
+        video_renderer.on_update = function(self, delta)
+            video_decoder:on_update(delta)
+            if video_decoder.has_finished then
+                self:make_invalid()
+                video_decoder:close()
+                _execute_next_node(node)
+            end
+        end
+        scene:add_object(video_renderer, "bp-video_render", 101)
+    end
+    return node
+end
+
+construct_func_pool["switch_to_game_scene"] = function(blueprint, data)
+    local node = _base_constructor(blueprint, data, "switch_to_game_scene", 0, 
+        ResourcesManager.find_icon(NodeDef.switch_to_game_scene.icon_id), 
+        NodeDef.switch_to_game_scene.color, NodeDef.switch_to_game_scene.name, NodeDef.switch_to_game_scene.comment)
+    _attach_pin(node, data and data.input_pin_list[1] or nil, "flow", false)
+    _attach_pin(node, data and data.input_pin_list[2] or nil, "string", false, "场景文件", {width_input = 135})
+    _attach_pin(node, data and data.output_pin_list[1] or nil, "flow", true)
+    node.on_exetute = function(self, scene)
+        local result, GameScene = pcall(require, self._input_pin_list[2]:get_val())
+        if not result then
+            LogManager.log(string.format("节点[#%d]：无法加载指定路径的场景文件\n%s", self._id:get(), GameScene), 
+                "error", {blueprint = self._blueprint._id, id = self._id:get()})
+            GlobalContext.stop_debug()
+            return
+        end
+        local game_scene = GameScene.new()
+        local prev_scene_context = blueprint._scene_context
+        game_scene._execute_next_node = function()
+            blueprint._scene_context:on_exit()
+            blueprint._scene_context = prev_scene_context
+            _execute_next_node(self)
+        end
+        blueprint._scene_context = game_scene
+        blueprint._scene_context:on_enter()
     end
     return node
 end

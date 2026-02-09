@@ -11,14 +11,18 @@ local LogManager = require("application.framework.log_manager")
 local UndoManager = require("application.framework.undo_manager")
 local ModifyManager = require("application.framework.modify_manager")
 local GlobalContext = require("application.framework.global_context")
+local SettingsManager = require("application.framework.settings_manager")
 local ResourcesManager = require("application.framework.resources_manager")
 
 local window_assets = require("application.scene.window.window_assets")
-local window_blueprint = require("application.scene.window.window_blueprint")
 local window_console = require("application.scene.window.window_console")
-local window_designer = require("application.scene.window.window_designer")
 local window_monitor = require("application.scene.window.window_monitor")
 local window_preview = require("application.scene.window.window_preview")
+local window_settings = require("application.scene.window.window_settings")
+local window_exporter = require("application.scene.window.window_exporter")
+local window_ui_designer = require("application.scene.window.window_ui_designer")
+local window_flow_designer = require("application.scene.window.window_flow_designer")
+local window_style_designer = require("application.scene.window.window_style_designer")
 
 local flag_window_main_docker <const> = imgui.WindowFlags.NoDocking | imgui.WindowFlags.NoTitleBar | imgui.WindowFlags.MenuBar 
     | imgui.WindowFlags.NoCollapse | imgui.WindowFlags.NoResize | imgui.WindowFlags.NoMove | imgui.WindowFlags.NoBringToFrontOnFocus | imgui.WindowFlags.NoNavFocus
@@ -41,6 +45,12 @@ local function _menu_item_with_icon(icon_id, text, shortcut, selected)
     return imgui.MenuItem(text, shortcut, selected)
 end
 
+local function _menu_item_font_zoom(zoom)
+    if imgui.MenuItem(string.format("%d%%", zoom * 100), nil, SettingsManager.get("editor_zoom_ratio") == zoom) then
+        SettingsManager.set("editor_zoom_ratio", zoom)
+    end
+end
+
 local function _is_current_blueprint_valid()
     return GlobalContext.current_blueprint and GlobalContext.current_blueprint._is_open.val
 end
@@ -57,54 +67,63 @@ local function _save_all_doc()
     end
 end
 
+local function _on_create_file(type_name, ext, path_folder, on_create)
+    local editor_zoom_ratio = SettingsManager.get("editor_zoom_ratio")
+    imgui.Text(string.format("%s路径：", type_name))
+    imgui.AlignTextToFramePadding()
+    imgui.Text(path_folder)
+    imgui.SameLine()
+    imgui.SetNextItemWidth(75 * editor_zoom_ratio)
+    imgui.InputText("##file_name", cstr_file_name)
+    imgui.SameLine()
+    imgui.Text(ext)
+    local can_create = true
+    local path = string.format("%s%s%s", path_folder, cstr_file_name:get(), ext)
+    if cstr_file_name:empty() or not rl.IsFileNameValid(cstr_file_name:get()) then
+        imgui.TextColored(imgui.ImColor(183, 40, 46, 255).value, string.format("+ 不合法的%s文件名", type_name))
+        can_create = false
+    elseif rl.FileExists(util.UTF8ToGBK(path)) then
+        imgui.TextColored(imgui.ImColor(243, 152, 0, 255).value, string.format("+ 已存在同名%s文件", type_name))
+        can_create = false
+    else
+        imgui.TextColored(imgui.ImColor(62, 179, 112, 255).value, string.format("+ 合法的%s文件名", type_name))
+    end
+    imgui.Dummy(imgui.ImVec2(0, 5 * editor_zoom_ratio))
+    imgui.BeginDisabled(not can_create)
+        if imgui.Button("创 建 文 件", imgui.ImVec2(imgui.GetContentRegionAvail().x, 0)) then
+            cstr_file_name:set("")  on_create(path)
+            LogManager.log(string.format("创建%s文件：%s", type_name, path), "info")
+        end
+    imgui.EndDisabled()
+end
+
 local function _on_tick_menu_bar()
     if imgui.BeginMenuBar() then
         if imgui.BeginMenu(" 文件 ") then
-            if _menu_with_icon("file-add-fill", "新建流程脚本") then
-                imgui.Text("流程文件路径：")
-                imgui.AlignTextToFramePadding()
-                imgui.Text("application/blueprint/")
-                imgui.SameLine()
-                imgui.SetNextItemWidth(75)
-                imgui.InputText("##file_name", cstr_file_name)
-                imgui.SameLine()
-                imgui.Text(".bp")
-                local can_create = true
-                local path = string.format("application/blueprint/%s.bp", cstr_file_name:get())
-                if cstr_file_name:empty() or not rl.IsFileNameValid(cstr_file_name:get()) then
-                    imgui.TextColored(imgui.ImColor(183, 40, 46, 255).value, "+ 不合法的流程文件名")
-                    can_create = false
-                elseif rl.FileExists(util.UTF8ToGBK(path)) then
-                    imgui.TextColored(imgui.ImColor(243, 152, 0, 255).value, "+ 已存在同名流程文件")
-                    can_create = false
-                else
-                    imgui.TextColored(imgui.ImColor(62, 179, 112, 255).value, "+ 合法的流程文件名")
-                end
-                imgui.Dummy(imgui.ImVec2(0, 5))
-                imgui.BeginDisabled(not can_create)
-                    if imgui.Button("创 建 流 程", imgui.ImVec2(imgui.GetContentRegionAvail().x, 0)) then
-                        cstr_file_name:set("")
-                        LogManager.log(string.format("创建流程文件：%s", path), "info")
-                        table.insert(GlobalContext.blueprint_list, Blueprint.new(path))
-                    end
-                imgui.EndDisabled()
+            if _menu_with_icon("flow-chart", "新建流程脚本") then
+                _on_create_file("流程脚本", ".flow", "application/flow/", function(path)
+                    table.insert(GlobalContext.blueprint_list, Blueprint.new(path))
+                end)
                 imgui.EndMenu()
             end
-            if _menu_with_icon("folder-open-fill", "打开流程脚本") then
+            if _menu_with_icon("folder-open-line", "打开流程脚本") then
                 for _, blueprint in ipairs(GlobalContext.blueprint_list) do
-                    if _menu_item_with_icon("file-paper-2-fill", blueprint._id, nil, blueprint._is_open.val) then
+                    if _menu_item_with_icon("file-paper-2-line", blueprint._id, nil, blueprint._is_open.val) then
                         blueprint._is_open.val = not blueprint._is_open.val
                     end
                 end
                 imgui.EndMenu()
             end
-            imgui.Separator()
-            if _menu_with_icon("file-add-fill", "新建界面设计") then
-
+            if _menu_with_icon("layout-3-line", "新建界面设计") then
+                _on_create_file("界面设计", ".ui", "application/ui/", function(path)
+                    -- table.insert(GlobalContext.blueprint_list, Blueprint.new(path))
+                end)
                 imgui.EndMenu()
             end
-            if _menu_with_icon("folder-open-fill", "打开界面设计") then
-
+            if _menu_with_icon("palette-line", "新建样式设计") then
+                _on_create_file("样式设计", ".style", "application/style/", function(path)
+                    -- table.insert(GlobalContext.blueprint_list, Blueprint.new(path))
+                end)
                 imgui.EndMenu()
             end
             imgui.Separator()
@@ -145,6 +164,15 @@ local function _on_tick_menu_bar()
                     imgui.NodeEditor.NavigateToContent()
                 end
             imgui.EndDisabled()
+            if _menu_with_icon("zoom-in-line", "编辑器界面缩放") then
+                _menu_item_font_zoom(0.50)
+                _menu_item_font_zoom(0.75)
+                _menu_item_font_zoom(1.00)
+                _menu_item_font_zoom(1.25)
+                _menu_item_font_zoom(1.50)
+                _menu_item_font_zoom(2.00)
+                imgui.EndMenu()
+            end
             imgui.EndMenu()
         end
         if imgui.BeginMenu(" 调试 ") then
@@ -156,6 +184,9 @@ local function _on_tick_menu_bar()
                     _run_debug()
                 end
             imgui.EndDisabled()
+            if _menu_item_with_icon("timer-flash-line", "显示调试窗口帧率", nil, SettingsManager.get("is_show_debug_fps")) then
+                SettingsManager.set("is_show_debug_fps", not SettingsManager.get("is_show_debug_fps"))
+            end
             imgui.EndMenu()
         end
         if imgui.BeginMenu(" 帮助 ") then
@@ -187,11 +218,14 @@ end
 
 local function on_enter(self)
     window_assets.on_enter()
-    window_blueprint.on_enter()
     window_console.on_enter()
-    window_designer.on_enter()
     window_monitor.on_enter()
     window_preview.on_enter()
+    window_settings.on_enter()
+    window_flow_designer.on_enter()
+    window_ui_designer.on_enter()
+    window_style_designer.on_enter()
+    window_exporter.on_enter()
 end
 
 local function on_exit(self)
@@ -210,11 +244,14 @@ local function on_update(self, delta)
         imgui.DockSpace(imgui.GetID("MainDockSpace"))
         _on_tick_menu_bar()
         window_assets:on_update(delta)
-        window_blueprint:on_update(delta)
-        window_designer:on_update(delta)
         window_console:on_update(delta)
         window_monitor:on_update(delta)
         window_preview:on_update(delta)
+        window_settings:on_update(delta)
+        window_exporter:on_update(delta)
+        window_ui_designer:on_update(delta)
+        window_style_designer:on_update(delta)
+        window_flow_designer:on_update(delta)
         -- 处理Ctrl+Shift+S全部保存
         if imgui.GetIO().KeyCtrl and imgui.GetIO().KeyShift and imgui.IsKeyPressed(imgui.ImGuiKey.S, false) then
             _save_all_doc()
@@ -228,11 +265,14 @@ end
 
 local function on_render(self)
     if window_assets.on_render then window_assets:on_render() end
-    if window_blueprint.on_render then window_blueprint:on_render() end
     if window_console.on_render then window_console:on_render() end
-    if window_designer.on_render then window_designer:on_render() end
     if window_monitor.on_render then window_monitor:on_render() end
     if window_preview.on_render then window_preview:on_render() end
+    if window_settings.on_render then window_settings:on_render() end
+    if window_exporter.on_render then window_exporter:on_render() end
+    if window_flow_designer.on_render then window_flow_designer:on_render() end
+    if window_ui_designer.on_render then window_ui_designer:on_render() end
+    if window_style_designer.on_render then window_style_designer:on_render() end
 end
 
 module.new = function()

@@ -4,7 +4,10 @@ local imgui = Engine.ImGUI
 
 local ImGUIHelper = require("application.framework.imgui_helper")
 local GlobalContext = require("application.framework.global_context")
+local SettingsManager = require("application.framework.settings_manager")
 local ResourcesManager = require("application.framework.resources_manager")
+
+SettingsManager.set_logger(module)
 
 local log_obj_list = {}
 local icon_config = 
@@ -15,9 +18,6 @@ local icon_config =
     success = {icon_id = "checkbox-circle-fill", color = imgui.ImVec4(imgui.ImColor(104, 190, 141, 255).value)},
     debug = {icon_id = "bug-fill", color = imgui.ImVec4(imgui.ImColor(188, 100, 164, 255).value)},
 }
-
-local size_icon <const> = imgui.ImVec2(18, 18)
-local size_button <const> = imgui.ImVec2(16, 16)
 
 module.log = function(msg, type_msg, nav_data)
     table.insert(log_obj_list, 
@@ -33,6 +33,9 @@ module.clear = function()
 end
 
 module.on_update = function()
+    local editor_zoom_ratio = SettingsManager.get("editor_zoom_ratio")
+    local size_icon <const> = imgui.ImVec2(18 * editor_zoom_ratio, 18 * editor_zoom_ratio)
+    local size_button <const> = imgui.ImVec2(16 * editor_zoom_ratio, 16 * editor_zoom_ratio)
     local pos_wrap = imgui.GetContentRegionAvail().x
     for idx, log_obj in ipairs(log_obj_list) do
         local config = icon_config[log_obj.type_msg] or icon_config["info"]

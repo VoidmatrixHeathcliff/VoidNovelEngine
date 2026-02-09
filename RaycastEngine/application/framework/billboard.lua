@@ -28,6 +28,8 @@ local function on_render(self)
 end
 
 module.new = function(name, dialogue, x, y, width, font_name, font_dialog, color_name, color_dialog, color_bg, time)
+    if #name == 0 then name = " " end
+    if #dialogue == 0 then dialogue = " " end
     local o = 
     {
         -- _metaname = "Billboard",

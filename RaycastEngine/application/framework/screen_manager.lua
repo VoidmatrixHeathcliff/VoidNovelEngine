@@ -4,6 +4,7 @@ local rl = Engine.Raylib
 
 local ColorHelper = require("application.framework.color_helper")
 local GlobalContext = require("application.framework.global_context")
+local SettingsManager = require("application.framework.settings_manager")
 
 local scale = 0
 local texture_target = nil
@@ -16,7 +17,7 @@ module.init = function(width, height)
     texture_target = rl.LoadRenderTexture(width, height)
     width_texture, height_texture = width, height
     rect_render_src.width, rect_render_src.height = width, -height
-    rl.SetTextureFilter(texture_target.texture, GlobalContext.filter_mode)
+    rl.SetTextureFilter(texture_target.texture, SettingsManager.get("filter_mode"))
 end
 
 module.get_size = function()
@@ -62,8 +63,7 @@ module.on_render = function()
     if GlobalContext.shader_postprocess then GlobalContext.shader_postprocess:use() end
     rl.DrawTexturePro(texture_target.texture, rect_render_src, rect_render_dst, render_origin, 0, ColorHelper.WHITE)
     if GlobalContext.shader_postprocess then GlobalContext.shader_postprocess:unuse() end
-    -- if GlobalContext.debug then rl.DrawFPS(25, 25) end
-    rl.DrawFPS(25, 25)
+    if not SettingsManager.get("release_mode") and SettingsManager.get("is_show_debug_fps") then rl.DrawFPS(25, 25) end
 end
 
 return module

@@ -6,6 +6,7 @@ local imgui = Engine.ImGUI
 
 local ImGUIHelper = require("application.framework.imgui_helper")
 local ColorHelper = require("application.framework.color_helper")
+local SettingsManager = require("application.framework.settings_manager")
 local ResourcesManager = require("application.framework.resources_manager")
 
 local cstr_filter = nil
@@ -18,6 +19,7 @@ local asset_type_filtered_pool =
 {
     font = imgui.Bool(true),
     audio = imgui.Bool(true),
+    video = imgui.Bool(true),
     shader = imgui.Bool(true),
     texture = imgui.Bool(true),
 }
@@ -52,11 +54,13 @@ end
 module.on_enter = function()
     asset_icon_pool["font"] = ResourcesManager.find_icon("font-size")
     asset_icon_pool["audio"] = ResourcesManager.find_icon("headphone-fill")
+    asset_icon_pool["video"] = ResourcesManager.find_icon("movie-2-fill")
     asset_icon_pool["shader"] = ResourcesManager.find_icon("paint-brush-fill")
     asset_icon_pool["texture"] = ResourcesManager.find_icon("image-fill")
 
     _init_asset_list("font", ResourcesManager.get_font_pool())
     _init_asset_list("audio", ResourcesManager.get_audio_pool())
+    _init_asset_list("video", ResourcesManager.get_video_pool())
     _init_asset_list("shader", ResourcesManager.get_shader_pool())
     _init_asset_list("texture", ResourcesManager.get_texture_pool())
 
@@ -68,12 +72,16 @@ module.on_enter = function()
 end
 
 module.on_update = function(self, delta)
+    local editor_zoom_ratio = SettingsManager.get("editor_zoom_ratio")
     imgui.Begin("资产视图")
         -- 绘制搜索栏和筛选按钮
-        imgui.SetNextItemWidth(imgui.GetContentRegionAvail().x - 32)
+        imgui.Text("筛选资产：")
+        imgui.SameLine()
+        imgui.SetNextItemWidth(imgui.GetContentRegionAvail().x - 18 * editor_zoom_ratio - 16)
         imgui.InputText("##filter", cstr_filter)
         imgui.SameLine()
-        if imgui.ImageButton("filter", ResourcesManager.find_icon("filter-2-line"), imgui.ImVec2(18, 18), nil, nil, nil, nil) then
+        if imgui.ImageButton("filter", ResourcesManager.find_icon("filter-2-line"), 
+            imgui.ImVec2(18 * editor_zoom_ratio, 18 * editor_zoom_ratio), nil, nil, nil, nil) then
             imgui.OpenPopup("popup_filter_type")
         end
         ImGUIHelper.HoveredTooltip("筛选资源类型")
@@ -90,7 +98,7 @@ module.on_update = function(self, delta)
             _re_filter_assets()
             target_list = asset_list_filtered
         end
-        imgui.BeginChild("asset_list")
+        imgui.BeginChild("asset_list", nil, imgui.ChildFlags.Borders)
             local size_icon = imgui.ImVec2(imgui.GetTextLineHeight(), imgui.GetTextLineHeight())
             for idx, asset in ipairs(target_list) do
                 local pos = imgui.GetCursorPos()
@@ -110,7 +118,7 @@ module.on_update = function(self, delta)
                     if asset.type == "texture" then
                         imgui.BeginTooltip()
                             if is_alt_key_pressed then
-                                imgui.BeginChild("texture_preview", imgui.ImVec2(240, 120))
+                                imgui.BeginChild("texture_preview", imgui.ImVec2(240 * editor_zoom_ratio, 120 * editor_zoom_ratio))
                                     local texture = ResourcesManager.find_sdl_texture(asset.id)
                                     local texture_info = sdl.QueryTexture(texture)
                                     local pos_begin = imgui.GetCursorPos()
@@ -145,6 +153,7 @@ module.on_update = function(self, delta)
         if imgui.BeginPopup("popup_filter_type") then
             imgui.Checkbox("字体", asset_type_filtered_pool.font)
             imgui.Checkbox("音频", asset_type_filtered_pool.audio)
+            imgui.Checkbox("视频", asset_type_filtered_pool.video)
             imgui.Checkbox("纹理", asset_type_filtered_pool.texture)
             imgui.Checkbox("着色器", asset_type_filtered_pool.shader)
             imgui.EndPopup()

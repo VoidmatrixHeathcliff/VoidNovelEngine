@@ -67,6 +67,12 @@ local meta_def_pool =
         color = imgui.ImVec4(imgui.ImColor(249, 200, 155, 255).value),
         name = "分支按钮对象"
     },
+    ["VideoRenderer"] = 
+    {
+        icon_id = "movie-2-fill",
+        color = imgui.ImVec4(imgui.ImColor(249, 200, 155, 255).value),
+        name = "视频渲染器对象"
+    },
 }
 
 local color_key <const> = imgui.ImVec4(imgui.ImColor(238, 130, 124, 255).value)

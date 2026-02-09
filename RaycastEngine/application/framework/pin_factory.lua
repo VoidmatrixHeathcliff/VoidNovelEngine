@@ -27,6 +27,7 @@ local type_color_pool <const> =
     ["bool"] = ColorHelper.ValueTypeColorPool.bool,
     ["font"] = ColorHelper.AssetTypeColorPool.font,
     ["audio"] = ColorHelper.AssetTypeColorPool.audio,
+    ["video"] = ColorHelper.AssetTypeColorPool.video,
     ["shader"] = ColorHelper.AssetTypeColorPool.shader,
     ["texture"] = ColorHelper.AssetTypeColorPool.texture,
 }
@@ -545,6 +546,77 @@ construct_func_pool["audio"] = function(id, owner_id, is_output, name, extra_arg
             return GlobalContext.runtime_find_pin(self._linked_pin_id:get()):get_val()
         end
         return ResourcesManager.find_audio(self._cstring:get())
+    end
+    return pin
+end
+
+construct_func_pool["video"] = function(id, owner_id, is_output, name, extra_args)
+    local pin = _base_constructor(id, owner_id, is_output, "video", imgui.NodeEditor.IconType.Circle, name or "视频资产")
+    pin._cstring = util.CString()
+    pin._prev_text = pin._cstring:get()
+    pin._width_input = 50 if extra_args then pin._width_input = extra_args.width_input or pin._width_input end
+    pin._on_tick_widgets = function(self)
+        imgui.BeginDisabled(not self._is_output and self._linked_pin_id)
+            imgui.SetNextItemWidth(self._width_input)
+            imgui.InputText("##video"..id, self._cstring)
+            if imgui.IsItemDeactivatedAfterEdit() then
+                UndoManager.record(function(data) 
+                        pin._cstring:set(data.old) 
+                        pin._prev_text = data.old
+                    end, function(data) 
+                        pin._cstring:set(data.new) 
+                        pin._prev_text = data.new
+                    end, {old = pin._prev_text, new = pin._cstring:get()})
+                pin._prev_text = pin._cstring:get()
+            end
+            if imgui.BeginDragDropTarget() then
+                local payload = imgui.AcceptDragDropPayload("asset")
+                if payload then
+                    if payload.type == "video" then
+                        self._cstring:set(payload.id)
+                        UndoManager.record(function(data) 
+                                pin._cstring:set(data.old) 
+                                pin._prev_text = data.old
+                            end, function(data) 
+                                pin._cstring:set(data.new) 
+                                pin._prev_text = data.new
+                            end, {old = pin._prev_text, new = pin._cstring:get()})
+                        pin._prev_text = pin._cstring:get()
+                    else
+                        LogManager.log(string.format("错误的引脚赋值类型，使用“%s”类型资产为“%s”类型引脚赋值", payload.type, "video"), "warning")
+                    end
+                end
+                imgui.EndDragDropTarget()
+            end
+            if self._is_output or (not self._is_output and not self._linked_pin_id) then
+                if not ResourcesManager.find_video(self._cstring:get()) then
+                    imgui.TextColored(imgui.ImColor(183, 40, 46, 255).value, "+ 无效的资产ID")
+                end
+            end
+        imgui.EndDisabled()
+    end
+    pin.on_load = function(self, data) 
+        _base_load(self, data)
+        self._cstring:set(data.val)
+        self._prev_text = data.val
+    end
+    pin.on_save = function(self)
+        local data = _base_save(self)
+        data.val = self._cstring:get()
+        return data
+    end
+    pin.set_val = function(self, val)
+        self._cstring:set(val)
+        self._prev_text = val
+    end
+    pin.get_val = function(self)
+        if self._is_output then
+            return ResourcesManager.find_video(self._cstring:get())
+        end
+        if self._linked_pin_id then
+            return GlobalContext.runtime_find_pin(self._linked_pin_id:get()):get_val()
+        end
+        return ResourcesManager.find_video(self._cstring:get())
     end
     return pin
 end
