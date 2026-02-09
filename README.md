@@ -80,6 +80,7 @@ VoidNovelEngine工具的二进制版本可在[GitHub发布页面](https://github
 ## 文档教程
 
 > 🚀[最新 dev.2 文档](doc/latest_doc/VNEguide.md)
+> 
 > 📦[旧版文档目录](doc/old_version_doc/list.md)
 
 ## 交流反馈
