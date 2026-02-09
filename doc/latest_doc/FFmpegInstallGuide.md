@@ -10,7 +10,7 @@
 
 ​	2.在页面中找到 **release builds** 区域。
 
-​	3.点击下载以下文件：**ffmpeg-release-full.7z**
+​	3.点击下载以下文件：**ffmpeg-release-essentials.7z**
 
 <p align="center">
   <img src="./VNEguide_img/78.png" alt="2" width="100%">
