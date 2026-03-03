@@ -102,6 +102,16 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
         "vorbisenc.lib"
         "vorbisfile.lib"
         "zlib.lib"
+        "avif.lib"
+        "jpeg.lib"
+        "libwebp.lib"
+        "libwebpdecoder.lib"
+        "libwebpdemux.lib"
+        "libwebpmux.lib"
+        "lzma.lib"
+        "tiff.lib"
+        "turbojpeg.lib"
+        "yuv.lib"
     )
     target_link_libraries(${ProjectName}
         "setupapi.lib"
