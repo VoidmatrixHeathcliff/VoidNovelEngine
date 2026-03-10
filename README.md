@@ -87,6 +87,7 @@ VoidNovelEngine工具的二进制版本可在[GitHub发布页面](https://github
 
 + VoidNovelEngine官方1群：[932941346](https://qm.qq.com/q/odwOt62qie)
 + VoidNovelEngine官方2群：[191086491](https://qm.qq.com/q/bvBNOQdMGY)
++ VoidNovelEngine官方3群：[978579458](https://qm.qq.com/q/56LS5seRqg)
 
 ## 三方依赖
 
