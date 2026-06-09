@@ -24,6 +24,8 @@ RaycastEngine/[Rr]elease/
 RaycastEngine/[Rr]eleases/
 RaycastEngine/x64/
 RaycastEngine/x86/
+RaycastEngine/RaycastEngine/
+/x64/[Dd]ebug/
 RaycastEngine/RaycastEngine.exe
 [Ww][Ii][Nn]32/
 [Aa][Rr][Mm]/
@@ -86,7 +88,12 @@ StyleCopReport.xml
 *_p.c
 *_h.h
 *.ilk
+*.exp
 *.meta
+!RaycastEngine/application/resources/**/*.meta
+RaycastEngine/library/
+RaycastEngine/.cache/
+RaycastEngine/save/
 *.obj
 *.idb
 *.iobj

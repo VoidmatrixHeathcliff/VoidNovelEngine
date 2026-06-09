@@ -110,10 +110,14 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
+      <AdditionalIncludeDirectories>../Thirdparty/Raylib/include;../Thirdparty/LuaBridge/include;../Thirdparty/Lua/include;../Thirdparty/SDL2/include;../Thirdparty/ImGUI/include;../Thirdparty/cJSON/include;../Thirdparty/MicroPather/include;../Thirdparty/cpp-base64/include;../Thirdparty/crossguid/include;../Thirdparty/efsw/include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <LanguageStandard>stdcpp17</LanguageStandard>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalLibraryDirectories>../thirdparty/raylib/x64;../thirdparty/lua/x64;../thirdparty/sdl2/x64;../thirdparty/crossguid/x64;../Thirdparty/efsw/x64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>raylib.lib;winmm.lib;glfw3.lib;lua.lib;SDL2_gfx.lib;SDL2_ttf.lib;SDL2_net-static.lib;SDL2_image-static.lib;SDL2_mixer-static.lib;SDL2-static.lib;setupapi.lib;Version.lib;imm32.lib;libpng16.lib;libwebp.lib;libwebpdecoder.lib;libwebpdemux.lib;libwebpmux.lib;turbojpeg.lib;avif.lib;tiff.lib;yuv.lib;lzma.lib;zlib.lib;freetype.lib;bz2.lib;brotlidec.lib;brotlicommon.lib;ogg.lib;vorbis.lib;vorbisenc.lib;vorbisfile.lib;libwavpack.lib;mpg123.lib;out123.lib;syn123.lib;Shlwapi.lib;FLAC.lib;FLAC++.lib;libxmp-static.lib;modplug.lib;opus.lib;opusfile.lib;libfluidsynth-3.lib;gio-2.0.lib;girepository-2.0.lib;glib-2.0.lib;gmodule-2.0.lib;gobject-2.0.lib;gthread-2.0.lib;ws2_32.lib;dsound.lib;iconv.lib;intl.lib;ksuser.lib;Iphlpapi.lib;dwmapi.lib;crossguid.lib;efsw.lib;mf.lib;mfplat.lib;mfreadwrite.lib;mfuuid.lib;dxgi.lib;d3d11.lib;ole32.lib;oleaut32.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -125,7 +129,7 @@
       <PreprocessorDefinitions>NDEBUG;_CONSOLE;_SILENCE_CXX17_CODECVT_HEADER_DEPRECATION_WARNING;_WINSOCK_DEPRECATED_NO_WARNINGS;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
-      <AdditionalIncludeDirectories>../Thirdparty/Raylib/include;../Thirdparty/LuaBridge/include;../Thirdparty/Lua/include;../Thirdparty/SDL2/include;../Thirdparty/ImGUI/include;../Thirdparty/cJSON/include;../Thirdparty/MicroPather/include;../Thirdparty/cpp-base64/include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>../Thirdparty/Raylib/include;../Thirdparty/LuaBridge/include;../Thirdparty/Lua/include;../Thirdparty/SDL2/include;../Thirdparty/ImGUI/include;../Thirdparty/cJSON/include;../Thirdparty/MicroPather/include;../Thirdparty/cpp-base64/include;../Thirdparty/crossguid/include;../Thirdparty/efsw/include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp17</LanguageStandard>
     </ClCompile>
     <Link>
@@ -133,8 +137,8 @@
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalLibraryDirectories>../thirdparty/raylib/x64;../thirdparty/lua/x64;../thirdparty/sdl2/x64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>raylib.lib;winmm.lib;glfw3.lib;lua.lib;SDL2_gfx.lib;SDL2_ttf.lib;SDL2_net-static.lib;SDL2_image-static.lib;SDL2_mixer-static.lib;SDL2-static.lib;setupapi.lib;Version.lib;imm32.lib;libpng16.lib;libwebp.lib;libwebpdecoder.lib;libwebpdemux.lib;libwebpmux.lib;turbojpeg.lib;avif.lib;tiff.lib;yuv.lib;lzma.lib;zlib.lib;freetype.lib;bz2.lib;brotlidec.lib;brotlicommon.lib;ogg.lib;vorbis.lib;vorbisenc.lib;vorbisfile.lib;libwavpack.lib;mpg123.lib;out123.lib;syn123.lib;Shlwapi.lib;FLAC.lib;FLAC++.lib;libxmp-static.lib;modplug.lib;opus.lib;opusfile.lib;libfluidsynth-3.lib;gio-2.0.lib;girepository-2.0.lib;glib-2.0.lib;gmodule-2.0.lib;gobject-2.0.lib;gthread-2.0.lib;ws2_32.lib;dsound.lib;iconv.lib;intl.lib;ksuser.lib;Iphlpapi.lib;dwmapi.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>../thirdparty/raylib/x64;../thirdparty/lua/x64;../thirdparty/sdl2/x64;../thirdparty/crossguid/x64;../Thirdparty/efsw/x64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>raylib.lib;winmm.lib;glfw3.lib;lua.lib;SDL2_gfx.lib;SDL2_ttf.lib;SDL2_net-static.lib;SDL2_image-static.lib;SDL2_mixer-static.lib;SDL2-static.lib;setupapi.lib;Version.lib;imm32.lib;libpng16.lib;libwebp.lib;libwebpdecoder.lib;libwebpdemux.lib;libwebpmux.lib;turbojpeg.lib;avif.lib;tiff.lib;yuv.lib;lzma.lib;zlib.lib;freetype.lib;bz2.lib;brotlidec.lib;brotlicommon.lib;ogg.lib;vorbis.lib;vorbisenc.lib;vorbisfile.lib;libwavpack.lib;mpg123.lib;out123.lib;syn123.lib;Shlwapi.lib;FLAC.lib;FLAC++.lib;libxmp-static.lib;modplug.lib;opus.lib;opusfile.lib;libfluidsynth-3.lib;gio-2.0.lib;girepository-2.0.lib;glib-2.0.lib;gmodule-2.0.lib;gobject-2.0.lib;gthread-2.0.lib;ws2_32.lib;dsound.lib;iconv.lib;intl.lib;ksuser.lib;Iphlpapi.lib;dwmapi.lib;crossguid.lib;efsw.lib;mf.lib;mfplat.lib;mfreadwrite.lib;mfuuid.lib;dxgi.lib;d3d11.lib;ole32.lib;oleaut32.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
@@ -154,11 +158,14 @@
     <ClCompile Include="..\Thirdparty\ImGUI\src\imgui_tables.cpp" />
     <ClCompile Include="..\Thirdparty\ImGUI\src\imgui_widgets.cpp" />
     <ClCompile Include="..\Thirdparty\ImGUI\src\rlImGui.cpp" />
+    <ClCompile Include="TextEditor.cpp" />
     <ClCompile Include="..\Thirdparty\ImGUI\src\widgets.cpp" />
     <ClCompile Include="..\Thirdparty\MicroPather\src\micropather.cpp" />
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="module_filewatch.cpp" />
     <ClCompile Include="module.cpp" />
     <ClCompile Include="module_imgui.cpp" />
+    <ClCompile Include="module_imgui_text_editor.cpp" />
     <ClCompile Include="module_imgui_ext.cpp" />
     <ClCompile Include="module_json.cpp" />
     <ClCompile Include="module_json_ext.cpp" />
@@ -168,10 +175,17 @@
     <ClCompile Include="module_sdl_ext.cpp" />
     <ClCompile Include="module_util.cpp" />
     <ClCompile Include="module_util_ext.cpp" />
+    <ClCompile Include="module_video.cpp" />
+    <ClCompile Include="video_common.cpp" />
+    <ClCompile Include="video_wmf_player.cpp" />
+    <ClCompile Include="video_wmf_service.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="module.h" />
+    <ClInclude Include="module_filewatch.h" />
     <ClInclude Include="module_imgui.h" />
+    <ClInclude Include="module_imgui_text_editor.h" />
+    <ClInclude Include="TextEditor.h" />
     <ClInclude Include="module_imgui_ext.h" />
     <ClInclude Include="module_json.h" />
     <ClInclude Include="module_json_ext.h" />
@@ -181,7 +195,11 @@
     <ClInclude Include="module_sdl_ext.h" />
     <ClInclude Include="module_util.h" />
     <ClInclude Include="module_util_ext.h" />
+    <ClInclude Include="module_video.h" />
     <ClInclude Include="resource.h" />
+    <ClInclude Include="video_common.h" />
+    <ClInclude Include="video_wmf_player.h" />
+    <ClInclude Include="video_wmf_service.h" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="RaycastEngine.rc" />

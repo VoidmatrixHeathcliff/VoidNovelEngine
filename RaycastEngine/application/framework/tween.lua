@@ -1,6 +1,7 @@
-local module = {}
-
+local Class = require("application.framework.class")
 local GameObject = require("application.framework.game_object")
+
+local Tween = Class.define("Tween", GameObject)
 
 local function on_update(o, delta)
     if not o._valid then return end
@@ -30,38 +31,29 @@ local function _ease_in(elapsed_time, duration)
     return t ^ 3
 end
 
-module.new = function(target, field, from, to, duration, callback, ease_type)
-    local o = 
-    {
-        _metaname = "Tween",
-
-        texture = nil,
-        w = 0, h = 0,
-
-        _target = target,
-        _field = field,
-        _from = from, _to = to,
-        _duration = duration,
-        _callback = callback,
-        _elapsed_time = 0,
-        _ease_func = _ease_linear,
-
-        on_update = on_update,
-    }
+function Tween:ctor(target, field, from, to, duration, callback, ease_type)
+    Class.call_super(Tween, self, "ctor")
+    self._target = target
+    self._field = field
+    self._from = from
+    self._to = to
+    self._duration = duration
+    self._callback = callback
+    self._elapsed_time = 0
+    self._ease_func = _ease_linear
     if ease_type then
         if ease_type == "out" then
-            o._ease_func = _ease_out
+            self._ease_func = _ease_out
         elseif ease_type == "in" then
-            o._ease_func = _ease_in
+            self._ease_func = _ease_in
         elseif ease_type == "linear" then
-            o._ease_func = _ease_linear
+            self._ease_func = _ease_linear
         else
             error(string.format("unknown ease type: %s", ease_type))
         end
     end
-    setmetatable(o, GameObject.new())
-    o.__index = o
-    return o
 end
 
-return module
+Tween.on_update = on_update
+
+return Tween

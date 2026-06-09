@@ -2,9 +2,15 @@ return
 
 [[
 # 1. 基础环境检查
-if (-not (Test-Path $EnigmaPath)) { Write-Host "Error: Enigma tool not found at $EnigmaPath" -ForegroundColor Red; exit }
+if (-not (Test-Path $EnigmaPath)) { Write-Host "Error: Enigma tool not found at $EnigmaPath" -ForegroundColor Red; exit 1 }
 $ExeFiles = Get-ChildItem -Path $SourceDir -Filter "*.exe"
-if ($ExeFiles.Count -eq 0) { Write-Host "Error: No EXE found in $SourceDir" -ForegroundColor Red; exit }
+if ($ExeFiles.Count -eq 0) { Write-Host "Error: No EXE found in $SourceDir" -ForegroundColor Red; exit 1 }
+
+function Escape-Xml {
+    param ([AllowNull()][string]$Value)
+    if ($null -eq $Value) { return "" }
+    return [System.Security.SecurityElement]::Escape($Value)
+}
 
 # 2. 递归生成文件树函数
 function Get-EvbTree {
@@ -17,7 +23,7 @@ function Get-EvbTree {
             # 文件夹节点
             $xml += "$Indent<File>`n"
             $xml += "$Indent  <Type>1</Type>`n"
-            $xml += "$Indent  <Name>$($item.Name)</Name>`n"
+            $xml += "$Indent  <Name>$(Escape-Xml $item.Name)</Name>`n"
             $xml += "$Indent  <Files>`n"
             $xml += Get-EvbTree -Path $item.FullName -Indent "$Indent    "
             $xml += "$Indent  </Files>`n"
@@ -29,8 +35,8 @@ function Get-EvbTree {
             # 文件节点 (Action 0 = 纯内存虚拟化)
             $xml += "$Indent<File>`n"
             $xml += "$Indent  <Type>2</Type>`n"
-            $xml += "$Indent  <Name>$($item.Name)</Name>`n"
-            $xml += "$Indent  <File>$($item.FullName)</File>`n"
+            $xml += "$Indent  <Name>$(Escape-Xml $item.Name)</Name>`n"
+            $xml += "$Indent  <File>$(Escape-Xml $item.FullName)</File>`n"
             $xml += "$Indent  <ActiveX>false</ActiveX>`n"
             $xml += "$Indent  <ActiveXInstall>false</ActiveXInstall>`n"
             $xml += "$Indent  <Action>0</Action>`n"
@@ -50,8 +56,8 @@ $TreeContent = Get-EvbTree -Path $SourceDir -Indent "          "
 $Header = @"
 <?xml version="1.0" encoding="UTF-8"?>
 <>
-  <InputFile>$SourceDir\$MainExeName</InputFile>
-  <OutputFile>$OutputFile</OutputFile>
+  <InputFile>$(Escape-Xml (Join-Path $SourceDir $MainExeName))</InputFile>
+  <OutputFile>$(Escape-Xml $OutputFile)</OutputFile>
   <Files>
     <Enabled>true</Enabled>
     <DeleteExtractedOnExit>false</DeleteExtractedOnExit>
@@ -87,6 +93,11 @@ Set-Content -Path $EvbProjectFile -Value $FinalXml -Encoding UTF8
 # 4. 执行打包
 Write-Host "Packing into Single EXE..." -ForegroundColor Green
 & $EnigmaPath $EvbProjectFile
+$PackExitCode = $LASTEXITCODE
+if ($PackExitCode -ne 0) {
+    Write-Host "`n[FAILED] Packing failed with exit code $PackExitCode." -ForegroundColor Red
+    exit $PackExitCode
+}
 
 # 5. 清理与结果反馈
 Write-Host "Cleaning up temporary project file..." -ForegroundColor Gray
@@ -94,7 +105,9 @@ if (Test-Path $EvbProjectFile) { Remove-Item $EvbProjectFile -Force }
 
 if (Test-Path $OutputFile) {
     Write-Host "`n[SUCCESS] $OutputFile created successfully!" -ForegroundColor Green
+    exit 0
 } else {
     Write-Host "`n[FAILED] Packing failed." -ForegroundColor Red
+    exit 1
 }
 ]]

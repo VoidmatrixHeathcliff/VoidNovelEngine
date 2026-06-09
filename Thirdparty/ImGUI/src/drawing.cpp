@@ -2,6 +2,65 @@
 # include "drawing.h"
 # include <imgui_internal.h>
 
+static float GetIconVisualRightPaddingFallback(const ImVec2& size, ax::Drawing::IconType type, bool filled)
+{
+    auto rect = ImRect(ImVec2(0.0f, 0.0f), size);
+    auto rect_w = rect.Max.x - rect.Min.x;
+    auto rect_center_x = (rect.Min.x + rect.Max.x) * 0.5f;
+
+    if (type == ax::Drawing::IconType::Flow)
+        return filled ? 3.5f : 2.5f;
+
+    auto rect_offset = -static_cast<int>(rect_w * 0.25f * 0.25f);
+    rect_center_x += rect_offset * 0.5f;
+
+    if (type == ax::Drawing::IconType::Circle)
+        return rect.Max.x - (rect_center_x + 6.0f);
+
+    if (type == ax::Drawing::IconType::Square || type == ax::Drawing::IconType::RoundSquare)
+        return rect.Max.x - (rect_center_x + (filled ? 6.5f : 7.0f));
+
+    if (type == ax::Drawing::IconType::Diamond)
+        return rect.Max.x - (rect_center_x + (filled ? 7.107f : 8.284f));
+
+    if (type == ax::Drawing::IconType::Grid)
+        return 1.88f;
+
+    return 0.0f;
+}
+
+float ax::Drawing::GetIconVisualRightPadding(const ImVec2& size, IconType type, bool filled)
+{
+    if (ImGui::GetCurrentContext() != nullptr)
+    {
+        ImDrawList draw_list(ImGui::GetDrawListSharedData());
+        draw_list._ResetForNewFrame();
+        if (ImGui::GetCurrentWindow() != nullptr)
+            draw_list.Flags = ImGui::GetWindowDrawList()->Flags;
+        draw_list.PushClipRectFullScreen();
+        draw_list.PushTexture(ImGui::GetIO().Fonts->TexRef);
+
+        DrawIcon(&draw_list, ImVec2(0.0f, 0.0f), size, type, filled, IM_COL32_WHITE, IM_COL32(0, 0, 0, 0));
+
+        bool has_vertex = false;
+        float max_x = 0.0f;
+        for (const auto& vertex : draw_list.VtxBuffer)
+        {
+            has_vertex = true;
+            if (vertex.pos.x > max_x)
+                max_x = vertex.pos.x;
+        }
+
+        draw_list.PopTexture();
+        draw_list.PopClipRect();
+
+        if (has_vertex)
+            return ImMax(0.0f, size.x - max_x);
+    }
+
+    return GetIconVisualRightPaddingFallback(size, type, filled);
+}
+
 void ax::Drawing::DrawIcon(ImDrawList* drawList, const ImVec2& a, const ImVec2& b, IconType type, bool filled, ImU32 color, ImU32 innerColor)
 {
           auto rect           = ImRect(a, b);

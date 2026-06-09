@@ -47,6 +47,12 @@
     <Filter Include="src\module\util\external\cpp-base64">
       <UniqueIdentifier>{7ac2eea6-fdf6-4c22-891f-de448e9b5ed1}</UniqueIdentifier>
     </Filter>
+    <Filter Include="src\module\filewatch">
+      <UniqueIdentifier>{20c26cbb-e63f-4457-a7b9-b2551a1af650}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\module\video">
+      <UniqueIdentifier>{ce56d823-ca2f-4d07-b18f-e12f4f766cdf}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp">
@@ -56,6 +62,9 @@
       <Filter>src\module\base</Filter>
     </ClCompile>
     <ClCompile Include="module_imgui.cpp">
+      <Filter>src\module\imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="module_imgui_text_editor.cpp">
       <Filter>src\module\imgui</Filter>
     </ClCompile>
     <ClCompile Include="module_raylib.cpp">
@@ -139,6 +148,24 @@
     <ClCompile Include="module_sdl_ext.cpp">
       <Filter>src\module\sdl</Filter>
     </ClCompile>
+    <ClCompile Include="module_filewatch.cpp">
+      <Filter>src\module\filewatch</Filter>
+    </ClCompile>
+    <ClCompile Include="module_video.cpp">
+      <Filter>src\module\video</Filter>
+    </ClCompile>
+    <ClCompile Include="TextEditor.cpp">
+      <Filter>src\module\imgui\external</Filter>
+    </ClCompile>
+    <ClCompile Include="video_common.cpp">
+      <Filter>src\module\video</Filter>
+    </ClCompile>
+    <ClCompile Include="video_wmf_player.cpp">
+      <Filter>src\module\video</Filter>
+    </ClCompile>
+    <ClCompile Include="video_wmf_service.cpp">
+      <Filter>src\module\video</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="module.h">
@@ -146,6 +173,12 @@
     </ClInclude>
     <ClInclude Include="module_imgui.h">
       <Filter>src\module\imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="module_imgui_text_editor.h">
+      <Filter>src\module\imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="TextEditor.h">
+      <Filter>src\module\imgui\external</Filter>
     </ClInclude>
     <ClInclude Include="module_raylib.h">
       <Filter>src\module\raylib</Filter>
@@ -174,6 +207,21 @@
     </ClInclude>
     <ClInclude Include="module_sdl_ext.h">
       <Filter>src\module\sdl</Filter>
+    </ClInclude>
+    <ClInclude Include="module_filewatch.h">
+      <Filter>src\module\filewatch</Filter>
+    </ClInclude>
+    <ClInclude Include="module_video.h">
+      <Filter>src\module\video</Filter>
+    </ClInclude>
+    <ClInclude Include="video_common.h">
+      <Filter>src\module\video</Filter>
+    </ClInclude>
+    <ClInclude Include="video_wmf_player.h">
+      <Filter>src\module\video</Filter>
+    </ClInclude>
+    <ClInclude Include="video_wmf_service.h">
+      <Filter>src\module\video</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

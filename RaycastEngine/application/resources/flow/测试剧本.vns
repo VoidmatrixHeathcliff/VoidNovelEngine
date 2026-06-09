@@ -1,0 +1,74 @@
+@@outline("教程")
+@@alias(bg = switch_background)
+@@alias(bgm = play_audio)
+@@alias(sfx = play_audio)
+@@alias(stop_all = stop_all_audio)
+@@alias(say = show_dialog_box)
+@@alias(fg = add_foreground)
+@@alias(move = move_foreground)
+@@alias(remove = remove_foreground)
+@@alias(scene = switch_scene)
+
+#开场
+
+; 先准备舞台。没有 #start 标签也能从第一条指令开始执行，左侧大纲会更干净。
+@set_style(&style("style/main.style"))
+@bg(&texture("study"), fade_time: 0.35, wait: false)
+@bgm(&audio("bgm"), loop: true, volume: 0.38, fade_time: 0.70) -> token:$bgm_token
+@fg(&texture("girl_1"), scale: 0.92, position: (340, 40), fade_time: 0.35, wait: false) -> foreground:$teacher
+@delay(0.35)
+
+@say("讲师", "先从最简单的 Galgame 场景开始。背景放好，音乐响起来，角色站到中间。", wait: true)
+@say("讲师", "右边这些文本会被编译成节点链路；左边的大纲只负责帮你跳到对应段落。", wait: true)
+@jump(#移动演示)
+
+#移动演示
+
+@say("讲师", "移动节点也很直接。它拿到刚才创建的立绘对象，然后改它的位置。", wait: true)
+@move($teacher, (20, 40), 0.28, wait: false)
+@delay(0.32)
+@move($teacher, (340, 40), 0.28, wait: false)
+@delay(0.32)
+@move($teacher, (660, 40), 0.28, wait: false)
+@delay(0.32)
+@move($teacher, (340, 40), 0.28, wait: false)
+@delay(0.32)
+@say("讲师", "就这样，左边一下、右边一下，再回到中间。实际做剧情时不用频繁晃，关键时候用一次就够。", wait: true)
+@jump(#分支演示)
+
+#分支演示
+
+; 选项会把玩家带到不同标签。这个例子只做两个分支。
+@say("讲师", "接下来放一个选择。选项本质上也是连线：点哪一项，就跳到哪一个标签。", wait: true)
+
+@choice()
+    - "听一下提示音" -> #提示音分支
+    - "直接继续" -> #继续讲解
+@end
+
+#提示音分支
+
+@sfx(&audio("shock"), loop: false, volume: 0.55, fade_time: 0.00) -> token:$sfx_token
+@say("讲师", "这就是音效节点。短音效一般播完就走，不需要额外处理。", wait: true)
+@jump(#继续讲解)
+
+#继续讲解
+
+@say("讲师", "如果是背景音乐，通常会把播放输出保存成 token，之后可以精准停止。", wait: true)
+@say("讲师", "如果只是做普通剧情，保持这种写法就够了：一段一段写，必要时用标签合流。", wait: true)
+@jump(#收尾)
+
+#收尾
+
+; 收尾时先把看得到、听得到的内容处理干净，再切回主菜单。
+@say("讲师", "这个最小示例到这里就结束。你可以把它当作新剧本的骨架。", wait: true)
+
+@if($teacher != null)
+    @remove($teacher, 0.30, wait: false)
+@end
+
+@delay(0.35)
+@stop_all(0.55)
+@clear_style()
+@scene("flow/主菜单.flow")
+

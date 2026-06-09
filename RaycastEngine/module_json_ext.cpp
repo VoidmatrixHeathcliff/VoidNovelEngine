@@ -64,6 +64,7 @@ void EE_JSON_ConvertJSONToLuaObject(cJSON* pJSONNode, lua_State* pLuaVM)
 
 cJSON* EE_JSON_ConvertLuaObjectToJSON(int idx, lua_State* pLuaVM)
 {
+	// SAVE TRACE: recursive Lua value/table -> cJSON conversion used by Engine.JSON.PrintFromLua.
 	cJSON* _pJSONNode = nullptr;
 	switch (lua_type(pLuaVM, idx))
 	{
@@ -88,6 +89,7 @@ cJSON* EE_JSON_ConvertLuaObjectToJSON(int idx, lua_State* pLuaVM)
 				return !(_hasStringKey = (lua_type(pLuaVM, -2) == LUA_TSTRING));
 			}
 		);
+		// SAVE TRACE: any string key makes an object; numeric-key-only tables become arrays.
 		_pJSONNode = _hasStringKey ? cJSON_CreateObject() : cJSON_CreateArray();
 
 		if (_pJSONNode->type == cJSON_Array)
@@ -155,6 +157,7 @@ int JSON_ParseToLua(lua_State* pLuaVM)
 
 int JSON_PrintFromLua(lua_State* pLuaVM)
 {
+	// SAVE TRACE: Lua-visible Lua table -> JSON string entry point; blueprint save calls this with dump_data.
 	cJSON* _pJSONRoot = EE_JSON_ConvertLuaObjectToJSON(1, pLuaVM);
 	char* _strJSON = lua_toboolean(pLuaVM, 2) ? cJSON_Print(_pJSONRoot) : cJSON_PrintUnformatted(_pJSONRoot);
 	lua_pushstring(pLuaVM, _strJSON);

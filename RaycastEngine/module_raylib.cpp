@@ -2,8 +2,15 @@
 #include "module_raylib.h"
 
 #include <raylib.h>
+#include <SDL.h>
+#include <SDL_ttf.h>
 #include <LuaBridge.h>
 
+#include <cmath>
+#include <filesystem>
+#include <memory>
+#include <string>
+#include <system_error>
 #include <vector>
 
 struct Codepoints
@@ -23,10 +30,158 @@ struct Vector2List
 	
 	void add(float x, float y) { list.push_back({x, y}); };
 	void add(const Vector2& vec) { list.push_back(vec); };
-	void pop() { list.pop_back(); };
+	void pop() { if (!list.empty()) list.pop_back(); };
 	void clear() { list.clear(); };
 	int size() const { return (int)list.size(); };
 };
+
+struct RaylibMemoryGuard
+{
+	unsigned char* data = nullptr;
+
+	~RaylibMemoryGuard()
+	{
+		if (data)
+			MemFree(data);
+	}
+};
+
+static std::string GetSdlBasePathUtf8()
+{
+	char* path = SDL_GetBasePath();
+	std::string result = path ? path : "";
+	SDL_free(path);
+	return result;
+}
+
+static std::string GetCurrentPathUtf8()
+{
+	std::error_code error;
+	std::filesystem::path path = std::filesystem::current_path(error);
+	return error ? std::string() : path.u8string();
+}
+
+static std::string GetApplicationDirectoryUtf8()
+{
+	std::string path = GetSdlBasePathUtf8();
+	if (!path.empty())
+		return path;
+
+	path = GetCurrentPathUtf8();
+	if (!path.empty())
+		return path;
+
+	const char* fallbackPath = GetApplicationDirectory();
+	return fallbackPath ? std::string(fallbackPath) : std::string();
+}
+
+static std::string GetWorkingDirectoryUtf8()
+{
+	std::string path = GetCurrentPathUtf8();
+	if (!path.empty())
+		return path;
+
+	const char* fallbackPath = GetWorkingDirectory();
+	return fallbackPath ? std::string(fallbackPath) : std::string();
+}
+
+static CString* ExportImageToMemoryBuffer(Image image, const char* fileType)
+{
+	if (!fileType)
+		return nullptr;
+
+	int fileSize = 0;
+	RaylibMemoryGuard exported;
+	exported.data = ExportImageToMemory(image, fileType, &fileSize);
+	if (!exported.data || fileSize <= 0)
+		return nullptr;
+
+	auto buffer = std::make_unique<CString>();
+	buffer->val.assign(reinterpret_cast<const char*>(exported.data), static_cast<size_t>(fileSize));
+	return buffer.release();
+}
+
+static Uint32 NormalizeWrappedTextLength(double wrapLength)
+{
+	constexpr double maxSafeWrapLength = 2147483647.0;
+	if (!std::isfinite(wrapLength) || wrapLength < 0.0 || wrapLength > maxSafeWrapLength)
+		return 0u;
+	return static_cast<Uint32>(std::floor(wrapLength + 0.5));
+}
+
+static Texture LoadTextureFromRenderedSDLSurface(SDL_Surface* surface)
+{
+	Texture texture = {};
+	if (!surface) return texture;
+
+	SDL_Surface* formattedSurface = SDL_ConvertSurfaceFormat(surface, SDL_PIXELFORMAT_RGBA32, 0);
+	if (!formattedSurface) return texture;
+
+	Image image = {};
+	image.data = formattedSurface->pixels;
+	image.width = formattedSurface->w;
+	image.height = formattedSurface->h;
+	image.mipmaps = 1;
+	image.format = PIXELFORMAT_UNCOMPRESSED_R8G8B8A8;
+	texture = LoadTextureFromImage(image);
+
+	SDL_FreeSurface(formattedSurface);
+	return texture;
+}
+
+static Texture LoadTextureFromRenderedFontFile(
+	const char* path,
+	int size,
+	const char* text,
+	SDL_Color color,
+	bool wrapped,
+	double wrapLength)
+{
+	if (!path || !text || size <= 0)
+		return Texture{};
+
+	TTF_Font* font = TTF_OpenFont(path, size);
+	if (!font)
+		return Texture{};
+
+	SDL_Surface* surface = wrapped
+		? TTF_RenderUTF8_Blended_Wrapped(font, text, color, NormalizeWrappedTextLength(wrapLength))
+		: TTF_RenderUTF8_Blended(font, text, color);
+	TTF_CloseFont(font);
+
+	Texture texture = LoadTextureFromRenderedSDLSurface(surface);
+	if (surface) SDL_FreeSurface(surface);
+	return texture;
+}
+
+static Texture LoadTextureFromRenderedFontMemory(
+	const CString* buffer,
+	int size,
+	const char* text,
+	SDL_Color color,
+	bool wrapped,
+	double wrapLength)
+{
+	if (!buffer || !text || size <= 0)
+		return Texture{};
+
+	SDL_RWops* rw = SDL_RWFromConstMem(buffer->val.data(), (int)buffer->val.size());
+	if (!rw)
+		return Texture{};
+
+	TTF_Font* font = TTF_OpenFontRW(rw, 1, size);
+	if (!font)
+		return Texture{};
+
+	SDL_Surface* surface = wrapped
+		? TTF_RenderUTF8_Blended_Wrapped(font, text, color, NormalizeWrappedTextLength(wrapLength))
+		: TTF_RenderUTF8_Blended(font, text, color);
+	TTF_CloseFont(font);
+
+	Texture texture = LoadTextureFromRenderedSDLSurface(surface);
+	if (surface) SDL_FreeSurface(surface);
+	return texture;
+}
 
 void init_raylib_module(lua_State* L)
 {
@@ -628,7 +783,6 @@ void init_raylib_module(lua_State* L)
 				.addFunction("SetClipboardText", SetClipboardText)
 				.addFunction("GetClipboardText", GetClipboardText)
 				.addFunction("GetClipboardImage", GetClipboardImage)
-				.addFunction("GetClipboardImage", GetClipboardImage)
 				.addFunction("EnableEventWaiting", EnableEventWaiting)
 				.addFunction("DisableEventWaiting", DisableEventWaiting)
 				// Cursor
@@ -710,8 +864,8 @@ void init_raylib_module(lua_State* L)
 				.addFunction("GetFileNameWithoutExt", GetFileNameWithoutExt)
 				.addFunction("GetDirectoryPath", GetDirectoryPath)
 				.addFunction("GetPrevDirectoryPath", GetPrevDirectoryPath)
-				.addFunction("GetWorkingDirectory", GetWorkingDirectory)
-				.addFunction("GetApplicationDirectory", GetApplicationDirectory)
+				.addFunction("GetWorkingDirectory", GetWorkingDirectoryUtf8)
+				.addFunction("GetApplicationDirectory", GetApplicationDirectoryUtf8)
 				.addFunction("MakeDirectory", MakeDirectory)
 				.addFunction("ChangeDirectory", ChangeDirectory)
 				.addFunction("IsPathFile", IsPathFile)
@@ -836,14 +990,17 @@ void init_raylib_module(lua_State* L)
 				.addFunction("LoadImageRaw", LoadImageRaw)
 				//.addFunction("LoadImageAnim", LoadImageAnim)
 				//.addFunction("LoadImageAnimFromMemory", LoadImageAnimFromMemory)
-				.addFunction("LoadImageFromMemory", +[](const char* filetype, const CString& buffer)
-					{ return LoadImageFromMemory(filetype, (const unsigned char*)buffer.val.data(), (int)buffer.val.size()); })
+				.addFunction("LoadImageFromMemory", +[](const char* filetype, const CString* buffer)
+					{
+						if (!filetype || !buffer || buffer->val.empty()) return Image{};
+						return LoadImageFromMemory(filetype, (const unsigned char*)buffer->val.data(), (int)buffer->val.size());
+					})
 				.addFunction("LoadImageFromTexture", LoadImageFromTexture)
 				.addFunction("LoadImageFromScreen", LoadImageFromScreen)
 				.addFunction("IsImageValid", IsImageValid)
 				.addFunction("UnloadImage", UnloadImage)
 				.addFunction("ExportImage", ExportImage)
-				//.addFunction("ExportImageToMemory", ExportImageToMemory)
+				.addFunction("ExportImageToMemoryBuffer", ExportImageToMemoryBuffer)
 				.addFunction("ExportImageAsCode", ExportImageAsCode)
 				// Image generation
 				.addFunction("GenImageColor", GenImageColor)
@@ -894,6 +1051,42 @@ void init_raylib_module(lua_State* L)
 				// Texture loading
 				.addFunction("LoadTexture", LoadTexture)
 				.addFunction("LoadTextureFromImage", LoadTextureFromImage)
+				.addFunction("LoadTextureFromSDLSurface", +[](SDL_Surface* surface)
+					{
+						return LoadTextureFromRenderedSDLSurface(surface);
+					})
+				.addFunction("LoadTextureFromUTF8BlendedRGBA", +[](TTF_Font* font, const char* text, Uint8 r, Uint8 g, Uint8 b, Uint8 a)
+					{
+						if (!font || !text) return Texture{};
+						SDL_Surface* surface = TTF_RenderUTF8_Blended(font, text, SDL_Color{ r, g, b, a });
+						Texture texture = LoadTextureFromRenderedSDLSurface(surface);
+						if (surface) SDL_FreeSurface(surface);
+						return texture;
+					})
+				.addFunction("LoadTextureFromUTF8BlendedWrappedRGBA", +[](TTF_Font* font, const char* text, Uint8 r, Uint8 g, Uint8 b, Uint8 a, double wrapLength)
+					{
+						if (!font || !text) return Texture{};
+						SDL_Surface* surface = TTF_RenderUTF8_Blended_Wrapped(font, text, SDL_Color{ r, g, b, a }, NormalizeWrappedTextLength(wrapLength));
+						Texture texture = LoadTextureFromRenderedSDLSurface(surface);
+						if (surface) SDL_FreeSurface(surface);
+						return texture;
+					})
+				.addFunction("LoadTextureFromUTF8BlendedFontFileRGBA", +[](const char* path, int size, const char* text, Uint8 r, Uint8 g, Uint8 b, Uint8 a)
+					{
+						return LoadTextureFromRenderedFontFile(path, size, text, SDL_Color{ r, g, b, a }, false, 0);
+					})
+				.addFunction("LoadTextureFromUTF8BlendedWrappedFontFileRGBA", +[](const char* path, int size, const char* text, Uint8 r, Uint8 g, Uint8 b, Uint8 a, double wrapLength)
+					{
+						return LoadTextureFromRenderedFontFile(path, size, text, SDL_Color{ r, g, b, a }, true, wrapLength);
+					})
+				.addFunction("LoadTextureFromUTF8BlendedFontMemoryRGBA", +[](const CString* buffer, int size, const char* text, Uint8 r, Uint8 g, Uint8 b, Uint8 a)
+					{
+						return LoadTextureFromRenderedFontMemory(buffer, size, text, SDL_Color{ r, g, b, a }, false, 0);
+					})
+				.addFunction("LoadTextureFromUTF8BlendedWrappedFontMemoryRGBA", +[](const CString* buffer, int size, const char* text, Uint8 r, Uint8 g, Uint8 b, Uint8 a, double wrapLength)
+					{
+						return LoadTextureFromRenderedFontMemory(buffer, size, text, SDL_Color{ r, g, b, a }, true, wrapLength);
+					})
 				.addFunction("LoadTextureCubemap", LoadTextureCubemap)
 				.addFunction("LoadRenderTexture", LoadRenderTexture)
 				.addFunction("IsTextureValid", IsTextureValid)
@@ -946,7 +1139,8 @@ void init_raylib_module(lua_State* L)
 				.addFunction("UnloadUTF8", +[](UTF8String utf8_str) { UnloadUTF8(utf8_str.text); })
 				.addFunction("LoadCodepoints", +[](const char* text) 
 					{
-						Codepoints codepoints; 
+						Codepoints codepoints = {};
+						if (!text) return codepoints;
 						codepoints.codepoints = LoadCodepoints(text, &codepoints.length);
 						return codepoints;
 					})
@@ -965,8 +1159,11 @@ void init_raylib_module(lua_State* L)
 				.addFunction("GetMasterVolume", GetMasterVolume)
 				// Wave/Sound loading/unloading
 				.addFunction("LoadWave", LoadWave)
-				.addFunction("LoadWaveFromMemory", +[](const char* fileType, const char* fileData, int dataSize)
-					{ LoadWaveFromMemory(fileType, (const unsigned char*)fileData, dataSize); })
+				.addFunction("LoadWaveFromMemory", +[](const char* fileType, const CString* buffer)
+					{
+						if (!fileType || !buffer || buffer->val.empty()) return Wave{};
+						return LoadWaveFromMemory(fileType, (const unsigned char*)buffer->val.data(), (int)buffer->val.size());
+					})
 				.addFunction("IsWaveValid", IsWaveValid)
 				.addFunction("LoadSound", LoadSound)
 				.addFunction("LoadSoundFromWave", LoadSoundFromWave)
@@ -994,8 +1191,11 @@ void init_raylib_module(lua_State* L)
 				//.addFunction("UnloadWaveSamples", UnloadWaveSamples)
 				//// Music management
 				.addFunction("LoadMusicStream", LoadMusicStream)
-				.addFunction("LoadMusicStreamFromMemory", +[](const char* fileType, const char* data, int dataSize) 
-					{ LoadMusicStreamFromMemory(fileType, (const unsigned char*) data, dataSize); })
+				.addFunction("LoadMusicStreamFromMemory", +[](const char* fileType, const CString* buffer) 
+					{
+						if (!fileType || !buffer || buffer->val.empty()) return Music{};
+						return LoadMusicStreamFromMemory(fileType, (const unsigned char*)buffer->val.data(), (int)buffer->val.size());
+					})
 				.addFunction("IsMusicValid", IsMusicValid)
 				.addFunction("UnloadMusicStream", UnloadMusicStream)
 				.addFunction("PlayMusicStream", PlayMusicStream)

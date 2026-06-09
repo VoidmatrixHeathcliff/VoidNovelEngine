@@ -1,7 +1,6 @@
 #include "module_sdl.h"
 #include "module_sdl_ext.h"
-
-#include <system_error>
+#include "module_util.h"
 
 #include <Map.h>
 #include <SDL.h>
@@ -12,7 +11,10 @@
 #include <LuaBridge.h>
 #include <SDL2_gfxPrimitives.h>
 
+#include <cmath>
 #include <string>
+#include <map>
+#include <vector>
 
 struct LockResult
 {
@@ -33,10 +35,18 @@ struct PointList
 
 	void add(int x, int y) { list.push_back({x, y}); };
 	void add(const SDL_Point& point) { list.push_back(point); };
-	void pop() { list.pop_back(); };
+	void pop() { if (!list.empty()) list.pop_back(); };
 	void clear() { list.clear(); };
 	int size() const { return (int)list.size(); };
 };
+
+static Uint32 NormalizeWrappedTextLength(double wrapLength)
+{
+	constexpr double maxSafeWrapLength = 2147483647.0;
+	if (!std::isfinite(wrapLength) || wrapLength < 0.0 || wrapLength > maxSafeWrapLength)
+		return 0u;
+	return static_cast<Uint32>(std::floor(wrapLength + 0.5));
+}
 
 void init_sdl_module(lua_State* L)
 {
@@ -223,6 +233,23 @@ void init_sdl_module(lua_State* L)
 					.addVariable("POLLSENTINEL", SDL_POLLSENTINEL)
 					.addVariable("USEREVENT", SDL_USEREVENT)
 				.endNamespace()
+				.beginNamespace("WindowEventID")
+					.addVariable("NONE", SDL_WINDOWEVENT_NONE)
+					.addVariable("SHOWN", SDL_WINDOWEVENT_SHOWN)
+					.addVariable("HIDDEN", SDL_WINDOWEVENT_HIDDEN)
+					.addVariable("EXPOSED", SDL_WINDOWEVENT_EXPOSED)
+					.addVariable("MOVED", SDL_WINDOWEVENT_MOVED)
+					.addVariable("RESIZED", SDL_WINDOWEVENT_RESIZED)
+					.addVariable("SIZE_CHANGED", SDL_WINDOWEVENT_SIZE_CHANGED)
+					.addVariable("MINIMIZED", SDL_WINDOWEVENT_MINIMIZED)
+					.addVariable("MAXIMIZED", SDL_WINDOWEVENT_MAXIMIZED)
+					.addVariable("RESTORED", SDL_WINDOWEVENT_RESTORED)
+					.addVariable("ENTER", SDL_WINDOWEVENT_ENTER)
+					.addVariable("LEAVE", SDL_WINDOWEVENT_LEAVE)
+					.addVariable("FOCUS_GAINED", SDL_WINDOWEVENT_FOCUS_GAINED)
+					.addVariable("FOCUS_LOST", SDL_WINDOWEVENT_FOCUS_LOST)
+					.addVariable("CLOSE", SDL_WINDOWEVENT_CLOSE)
+				.endNamespace()
 				.beginNamespace("ScaleMode")
 					.addVariable("NEAREST", SDL_ScaleModeNearest)
 					.addVariable("LINEAR", SDL_ScaleModeLinear)
@@ -348,67 +375,101 @@ void init_sdl_module(lua_State* L)
 				.addFunction("GetBasePath", +[]() 
 					{ 
 						char* path = SDL_GetBasePath();
-						std::string str_path = path;
+						std::string str_path = path ? path : "";
 						SDL_free(path);
 						return str_path;
 					})
 				.addFunction("GetPrefPath", +[](const char* org, const char* app) 
 					{ 
-						char* path = SDL_GetPrefPath(org, app);
-						std::string str_path = path;
+						char* path = SDL_GetPrefPath(org ? org : "", app ? app : "");
+						std::string str_path = path ? path : "";
 						SDL_free(path);
 						return str_path;
 					})
-				.addFunction("SetHint", +[](const char* name, const char* value) { return SDL_SetHint(name, value) == SDL_TRUE;})
-				.addFunction("ShowSimpleMessageBox", SDL_ShowSimpleMessageBox)
+				.addFunction("SetHint", +[](const char* name, const char* value) { return name && SDL_SetHint(name, value ? value : "") == SDL_TRUE;})
+				.addFunction("ShowSimpleMessageBox", +[](Uint32 flags, const char* title, const char* message, SDL_Window* window)
+					{ return SDL_ShowSimpleMessageBox(flags, title ? title : "", message ? message : "", window); })
 				.addFunction("ShowConfirmBox", SDL_ShowConfirmBox)
 				.addFunction("CreateWindow", SDL_CreateWindow)
-				.addFunction("DestroyWindow", SDL_DestroyWindow)
+				.addFunction("DestroyWindow", +[](SDL_Window* window) { if (window) SDL_DestroyWindow(window); })
+				.addFunction("GetWindowFlags", +[](SDL_Window* window) { return window ? SDL_GetWindowFlags(window) : 0; })
+				.addFunction("GetWindowEventID", +[](const SDL_Event* event)
+					{
+						return event && event->type == SDL_WINDOWEVENT ? static_cast<int>(event->window.event) : 0;
+					})
+				.addFunction("GetWindowEventWindowID", +[](const SDL_Event* event)
+					{
+						return event && event->type == SDL_WINDOWEVENT ? static_cast<unsigned int>(event->window.windowID) : 0u;
+					})
 				.addFunction("SetWindowIcon", SDL_SetWindowIcon)
 				.addFunction("CreateRenderer", SDL_CreateRenderer)
-				.addFunction("DestroyRenderer", SDL_DestroyRenderer)
-				.addFunction("CreateTexture", SDL_CreateTexture)
-				.addFunction("DestroyTexture", SDL_DestroyTexture)
-				.addFunction("UpdateTexture", SDL_UpdateTexture)
+				.addFunction("DestroyRenderer", +[](SDL_Renderer* renderer) { if (renderer) SDL_DestroyRenderer(renderer); })
+				.addFunction("CreateTexture", +[](SDL_Renderer* renderer, Uint32 format, int access, int w, int h)
+					{ return renderer && w > 0 && h > 0 ? SDL_CreateTexture(renderer, format, access, w, h) : (SDL_Texture*)nullptr; })
+				.addFunction("CreateTextureFromSurface", +[](SDL_Renderer* renderer, SDL_Surface* surface)
+					{ return renderer && surface ? SDL_CreateTextureFromSurface(renderer, surface) : (SDL_Texture*)nullptr; })
+				.addFunction("DestroyTexture", +[](SDL_Texture* texture) { if (texture) SDL_DestroyTexture(texture); })
+				.addFunction("UpdateTexture", +[](SDL_Texture* texture, const SDL_Rect* rect, const void* pixels, int pitch)
+					{ return texture && pixels ? SDL_UpdateTexture(texture, rect, pixels, pitch) : -1; })
 				.addFunction("LockTexture", +[](SDL_Texture* texture, LockResult* result, luabridge::LuaRef rect)
-					{ result->valid = !SDL_LockTexture(texture, rect ? (const SDL_Rect*)rect : nullptr, &result->data, &result->pitch); })
-				.addFunction("UnlockTexture", SDL_UnlockTexture)
+					{
+						if (!result)
+							return;
+						result->valid = false;
+						result->data = nullptr;
+						result->pitch = 0;
+						if (!texture)
+							return;
+						result->valid = SDL_LockTexture(texture, rect ? (const SDL_Rect*)rect : nullptr, &result->data, &result->pitch) == 0;
+					})
+				.addFunction("UnlockTexture", +[](SDL_Texture* texture) { if (texture) SDL_UnlockTexture(texture); })
 				.addFunction("QueryTexture", +[](SDL_Texture* texture)
 					{
-						Uint32 format; int access, w, h; SDL_QueryTexture(texture, &format, &access, &w, &h);
+						Uint32 format = SDL_PIXELFORMAT_UNKNOWN;
+						int access = 0;
+						int w = 0;
+						int h = 0;
+						if (texture)
+							SDL_QueryTexture(texture, &format, &access, &w, &h);
 						return std::map<std::string, int>({ {"format", format}, { "access", access }, { "w", w }, { "h", h } });
 					})
-				.addFunction("SetTextureScaleMode", +[](SDL_Texture* texture, int mode) { SDL_SetTextureScaleMode(texture, (SDL_ScaleMode)mode);})
-				.addFunction("SetTextureBlendMode", +[](SDL_Texture* texture, int mode) { SDL_SetTextureBlendMode(texture, (SDL_BlendMode)mode); })
+				.addFunction("SetTextureScaleMode", +[](SDL_Texture* texture, int mode) { return texture ? SDL_SetTextureScaleMode(texture, (SDL_ScaleMode)mode) : -1;})
+				.addFunction("SetTextureBlendMode", +[](SDL_Texture* texture, int mode) { return texture ? SDL_SetTextureBlendMode(texture, (SDL_BlendMode)mode) : -1; })
 				.addFunction("CreateRGBSurface", SDL_CreateRGBSurface)
-				.addFunction("SetSurfaceBlendMode", +[](SDL_Surface* surface, int mode) { SDL_SetSurfaceBlendMode(surface, (SDL_BlendMode)mode); })
-				.addFunction("FreeSurface", SDL_FreeSurface)
-				.addFunction("ConvertSurfaceFormat", SDL_ConvertSurfaceFormat)
-				.addFunction("RenderReadPixels", SDL_RenderReadPixels)
+				.addFunction("SetSurfaceBlendMode", +[](SDL_Surface* surface, int mode) { return surface ? SDL_SetSurfaceBlendMode(surface, (SDL_BlendMode)mode) : -1; })
+				.addFunction("FreeSurface", +[](SDL_Surface* surface) { if (surface) SDL_FreeSurface(surface); })
+				.addFunction("ConvertSurfaceFormat", +[](SDL_Surface* surface, Uint32 pixel_format, Uint32 flags)
+					{ return surface ? SDL_ConvertSurfaceFormat(surface, pixel_format, flags) : (SDL_Surface*)nullptr; })
+				.addFunction("RenderReadPixels", +[](SDL_Renderer* renderer, const SDL_Rect* rect, Uint32 format, void* pixels, int pitch)
+					{ return renderer && pixels ? SDL_RenderReadPixels(renderer, rect, format, pixels, pitch) : -1; })
 				.addFunction("GetError", SDL_GetError)
 				.addFunction("PollEvent", SDL_PollEvent)
 				.addFunction("SetClipboardText", SDL_SetClipboardText)
 				.addFunction("GetClipboardText", +[]() 
 					{
 						char* buffer = SDL_GetClipboardText();
-						std::string str_content = buffer; SDL_free(buffer);
+						std::string str_content = buffer ? buffer : "";
+						SDL_free(buffer);
 						return str_content;
 					})
-				.addFunction("SetRenderTarget", SDL_SetRenderTarget)
-				.addFunction("GetRenderTarget", SDL_GetRenderTarget)
-				.addFunction("SetRenderDrawColor", SDL_SetRenderDrawColor)
-				.addFunction("RenderClear", SDL_RenderClear)
-				.addFunction("RenderPresent", SDL_RenderPresent)
+				.addFunction("SetRenderTarget", +[](SDL_Renderer* renderer, SDL_Texture* texture) { return renderer ? SDL_SetRenderTarget(renderer, texture) : -1; })
+				.addFunction("GetRenderTarget", +[](SDL_Renderer* renderer) { return renderer ? SDL_GetRenderTarget(renderer) : (SDL_Texture*)nullptr; })
+				.addFunction("SetRenderDrawColor", +[](SDL_Renderer* renderer, Uint8 r, Uint8 g, Uint8 b, Uint8 a)
+					{ return renderer ? SDL_SetRenderDrawColor(renderer, r, g, b, a) : -1; })
+				.addFunction("RenderClear", +[](SDL_Renderer* renderer) { return renderer ? SDL_RenderClear(renderer) : -1; })
+				.addFunction("RenderPresent", +[](SDL_Renderer* renderer) { if (renderer) SDL_RenderPresent(renderer); })
 				.addFunction("GetNumVideoDisplays", SDL_GetNumVideoDisplays)
 				.addFunction("GetDesktopDisplayMode", +[](int idx)
 					{
-						SDL_DisplayMode mode; SDL_GetDesktopDisplayMode(idx, &mode);
+						SDL_DisplayMode mode = {};
+						SDL_GetDesktopDisplayMode(idx, &mode);
 						return std::map<std::string, int>({ {"format", mode.format}, 
 							{ "refresh_rate", mode.refresh_rate }, { "w", mode.w }, { "h", mode.h } });
 					})
 				.addFunction("GetDisplayBounds", +[](int idx)
 					{
-						SDL_Rect rect; SDL_GetDisplayBounds(idx, &rect);
+						SDL_Rect rect = {};
+						SDL_GetDisplayBounds(idx, &rect);
 						return rect;
 					})
 				// mixer
@@ -423,11 +484,19 @@ void init_sdl_module(lua_State* L)
 				.addFunction("FadeOutMusic", Mix_FadeOutMusic)
 				.addFunction("ResumeMusic", Mix_ResumeMusic)
 				.addFunction("LoadWAV", Mix_LoadWAV)
+				.addFunction("LoadWAVFromMemory", +[](const CString* buffer)
+					{
+						if (!buffer || buffer->val.empty()) return (Mix_Chunk*)nullptr;
+						SDL_RWops* rw = SDL_RWFromConstMem(buffer->val.data(), (int)buffer->val.size());
+						if (!rw) return (Mix_Chunk*)nullptr;
+						return Mix_LoadWAV_RW(rw, 1);
+					})
 				.addFunction("FreeChunk", Mix_FreeChunk)
 				.addFunction("PlayChannel", Mix_PlayChannel)
 				.addFunction("FadeInChannel", Mix_FadeInChannel)
 				.addFunction("HaltChannel", Mix_HaltChannel)
 				.addFunction("FadeOutChannel", Mix_FadeOutChannel)
+				.addFunction("PlayingChannel", Mix_Playing)
 				.addFunction("Volume", Mix_Volume)
 				.addFunction("VolumeMusic", Mix_VolumeMusic)
 				.addFunction("VolumeChunk", Mix_VolumeChunk)
@@ -436,7 +505,22 @@ void init_sdl_module(lua_State* L)
 				.addFunction("InitIMG", IMG_Init)
 				.addFunction("QuitIMG", IMG_Quit)
 				.addFunction("LoadImage", IMG_Load)
-				.addFunction("LoadTexture", IMG_LoadTexture)
+				.addFunction("LoadImageFromMemory", +[](const CString* buffer)
+					{
+						if (!buffer || buffer->val.empty()) return (SDL_Surface*)nullptr;
+						SDL_RWops* rw = SDL_RWFromConstMem(buffer->val.data(), (int)buffer->val.size());
+						if (!rw) return (SDL_Surface*)nullptr;
+						return IMG_Load_RW(rw, 1);
+					})
+				.addFunction("LoadTexture", +[](SDL_Renderer* renderer, const char* file)
+					{ return renderer && file ? IMG_LoadTexture(renderer, file) : (SDL_Texture*)nullptr; })
+				.addFunction("LoadTextureFromMemory", +[](SDL_Renderer* renderer, const CString* buffer)
+					{
+						if (!renderer || !buffer || buffer->val.empty()) return (SDL_Texture*)nullptr;
+						SDL_RWops* rw = SDL_RWFromConstMem(buffer->val.data(), (int)buffer->val.size());
+						if (!rw) return (SDL_Texture*)nullptr;
+						return IMG_LoadTexture_RW(renderer, rw, 1);
+					})
 				.addFunction("SaveJPG", IMG_SaveJPG)
 				.addFunction("SavePNG", IMG_SavePNG)
 				// gfx
@@ -465,9 +549,34 @@ void init_sdl_module(lua_State* L)
 				.addFunction("InitTTF", TTF_Init)
 				.addFunction("QuitTTF", TTF_Quit)
 				.addFunction("OpenFont", TTF_OpenFont)
+				.addFunction("OpenFontFromMemory", +[](const CString* buffer, int size)
+					{
+						if (!buffer) return (TTF_Font*)nullptr;
+						SDL_RWops* rw = SDL_RWFromConstMem(buffer->val.data(), (int)buffer->val.size());
+						if (!rw) return (TTF_Font*)nullptr;
+						return TTF_OpenFontRW(rw, 1, size);
+					})
 				.addFunction("CloseFont", TTF_CloseFont)
-				.addFunction("RenderUTF8Blended", TTF_RenderUTF8_Blended)
-				.addFunction("RenderUTF8BlendedWrapped", TTF_RenderUTF8_Blended_Wrapped)
+				.addFunction("RenderUTF8Blended", +[](TTF_Font* font, const char* text, const SDL_Color* color)
+					{
+						if (!font || !text || !color) return (SDL_Surface*)nullptr;
+						return TTF_RenderUTF8_Blended(font, text, *color);
+					})
+				.addFunction("RenderUTF8BlendedRGBA", +[](TTF_Font* font, const char* text, Uint8 r, Uint8 g, Uint8 b, Uint8 a)
+					{
+						if (!font || !text) return (SDL_Surface*)nullptr;
+						return TTF_RenderUTF8_Blended(font, text, SDL_Color{ r, g, b, a });
+					})
+				.addFunction("RenderUTF8BlendedWrapped", +[](TTF_Font* font, const char* text, const SDL_Color* color, double wrapLength)
+					{
+						if (!font || !text || !color) return (SDL_Surface*)nullptr;
+						return TTF_RenderUTF8_Blended_Wrapped(font, text, *color, NormalizeWrappedTextLength(wrapLength));
+					})
+				.addFunction("RenderUTF8BlendedWrappedRGBA", +[](TTF_Font* font, const char* text, Uint8 r, Uint8 g, Uint8 b, Uint8 a, double wrapLength)
+					{
+						if (!font || !text) return (SDL_Surface*)nullptr;
+						return TTF_RenderUTF8_Blended_Wrapped(font, text, SDL_Color{ r, g, b, a }, NormalizeWrappedTextLength(wrapLength));
+					})
 				// net
 				.addFunction("InitNET", SDLNet_Init)
 				.addFunction("ResolveHost", SDLNet_ResolveHost)

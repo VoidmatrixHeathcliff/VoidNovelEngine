@@ -40,3 +40,49 @@ int Util_GBKToUTF8(lua_State* pLuaVM);
 int Util_UTF8ToGBK(lua_State* pLuaVM); 
 
 int Util_UTF8ToUTF16(lua_State* pLuaVM);
+
+int Util_NewGuidString(lua_State* pLuaVM);
+
+int Util_IsGuidString(lua_State* pLuaVM);
+
+int Util_NormalizeGuidString(lua_State* pLuaVM);
+
+int Util_ReadAllTextUtf8(lua_State* pLuaVM);
+
+int Util_ReadAllBytesUtf8(lua_State* pLuaVM);
+
+int Util_WriteAllTextUtf8(lua_State* pLuaVM);
+
+int Util_WriteAllBytesUtf8(lua_State* pLuaVM);
+
+int Util_FileExistsUtf8(lua_State* pLuaVM);
+
+int Util_DirectoryExistsUtf8(lua_State* pLuaVM);
+
+int Util_CreateDirectoriesUtf8(lua_State* pLuaVM);
+
+int Util_RemoveFileUtf8(lua_State* pLuaVM);
+
+int Util_RemoveDirectoryUtf8(lua_State* pLuaVM);
+
+int Util_RenameUtf8(lua_State* pLuaVM);
+
+int Util_CopyFileUtf8(lua_State* pLuaVM);
+
+int Util_CopyDirectoryUtf8(lua_State* pLuaVM);
+
+int Util_ListDirectoryUtf8(lua_State* pLuaVM);
+
+int Util_GetFileSizeUtf8(lua_State* pLuaVM);
+
+int Util_GetFileModifiedTimeUtf8(lua_State* pLuaVM);
+
+int Util_SetFileHiddenUtf8(lua_State* pLuaVM);
+
+int Util_RunProcessUtf8(lua_State* pLuaVM);
+
+int Util_RunProcessAndCaptureUtf8(lua_State* pLuaVM);
+
+int Util_StartProcessUtf8(lua_State* pLuaVM);
+
+int Util_OpenPathOrUrlUtf8(lua_State* pLuaVM);

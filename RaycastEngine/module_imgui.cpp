@@ -4,6 +4,7 @@
 
 #include <SDL.h>
 #include <imgui.h>
+#include <imgui_internal.h>
 #include <raylib.h>
 #include <rlImGui.h>
 #include <widgets.h>
@@ -12,6 +13,8 @@
 #include <imgui_impl_sdl2.h>
 #include <imgui_node_editor.h>
 #include <imgui_impl_sdlrenderer2.h>
+#include <algorithm>
+#include <vector>
 
 struct Bool
 {
@@ -33,6 +36,264 @@ struct CustomPayload
 	luabridge::LuaRef payload;
 	CustomPayload(luabridge::LuaRef _payload) : payload(_payload) { }
 };
+
+static SDL_Window* g_sdl_imgui_window = nullptr;
+static bool g_sdl_imgui_initialized = false;
+static bool g_sdl_imgui_frame_active = false;
+
+static bool ImGUI_SDLBackendReady()
+{
+	return g_sdl_imgui_initialized && ImGui::GetCurrentContext() != nullptr;
+}
+
+static bool ImGUI_IsTextInputSessionActive()
+{
+	ImGuiContext* context = ImGui::GetCurrentContext();
+	if (context == nullptr)
+		return false;
+
+	ImGuiIO& io = ImGui::GetIO();
+	ImGuiContext& g = *context;
+	return io.WantTextInput || (g.ActiveId != 0 && g.InputTextState.ID == g.ActiveId);
+}
+
+static void ImGUI_ResetTransientInputState(bool focus_lost = false, bool clear_active_state = false, bool clear_events_queue = false)
+{
+	if (ImGui::GetCurrentContext() == nullptr)
+		return;
+
+	ImGuiIO& io = ImGui::GetIO();
+	if (clear_events_queue)
+		io.ClearEventsQueue();
+	io.ClearInputMouse();
+	if (focus_lost)
+		io.AddFocusEvent(false);
+	if (clear_active_state)
+	{
+		ImGui::ClearActiveID();
+		ImGui::ClosePopupsExceptModals();
+	}
+	io.MouseWheel = 0.0f;
+	io.MouseWheelH = 0.0f;
+	SDL_CaptureMouse(SDL_FALSE);
+}
+
+static bool ImGUI_IsSDLWindowFocusLostEvent(const SDL_Event* event)
+{
+	return event != nullptr
+		&& event->type == SDL_WINDOWEVENT
+		&& event->window.event == SDL_WINDOWEVENT_FOCUS_LOST;
+}
+
+static void ImGUI_HandleSoftFocusLost(bool preserve_text_input_focus)
+{
+	if (ImGui::GetCurrentContext() == nullptr)
+		return;
+
+	ImGuiIO& io = ImGui::GetIO();
+	io.ClearInputMouse();
+	if (!preserve_text_input_focus)
+	{
+		ImGui::ClearActiveID();
+		ImGui::ClosePopupsExceptModals();
+	}
+	SDL_CaptureMouse(SDL_FALSE);
+}
+
+static bool ImGUI_ShouldResetTransientInputForSDLEvent(const SDL_Event* event, bool* focus_lost = nullptr)
+{
+	if (focus_lost != nullptr)
+		*focus_lost = false;
+	if (event == nullptr)
+		return false;
+
+	if (event->type == SDL_RENDER_TARGETS_RESET
+		|| event->type == SDL_RENDER_DEVICE_RESET
+		|| event->type == SDL_APP_WILLENTERBACKGROUND
+		|| event->type == SDL_APP_DIDENTERBACKGROUND)
+	{
+		if (focus_lost != nullptr)
+			*focus_lost = event->type == SDL_APP_WILLENTERBACKGROUND || event->type == SDL_APP_DIDENTERBACKGROUND;
+		return true;
+	}
+
+	if (event->type != SDL_WINDOWEVENT)
+		return false;
+
+	switch (event->window.event)
+	{
+	case SDL_WINDOWEVENT_HIDDEN:
+	case SDL_WINDOWEVENT_MINIMIZED:
+	case SDL_WINDOWEVENT_RESIZED:
+	case SDL_WINDOWEVENT_SIZE_CHANGED:
+	case SDL_WINDOWEVENT_CLOSE:
+		if (focus_lost != nullptr)
+		{
+			*focus_lost = event->window.event == SDL_WINDOWEVENT_HIDDEN
+				|| event->window.event == SDL_WINDOWEVENT_MINIMIZED
+				|| event->window.event == SDL_WINDOWEVENT_CLOSE;
+		}
+		return true;
+	default:
+		return false;
+	}
+}
+
+static bool ImGUI_SetupSDLBackend(SDL_Window* window, SDL_Renderer* renderer)
+{
+	if (g_sdl_imgui_initialized)
+		return true;
+	if (window == nullptr || renderer == nullptr)
+		return false;
+
+	ImGui::CreateContext();
+	if (ImGui::GetCurrentContext() == nullptr)
+		return false;
+
+	if (!ImGui_ImplSDL2_InitForSDLRenderer(window, renderer))
+	{
+		ImGui::DestroyContext();
+		return false;
+	}
+	if (!ImGui_ImplSDLRenderer2_Init(renderer))
+	{
+		ImGui_ImplSDL2_Shutdown();
+		ImGui::DestroyContext();
+		return false;
+	}
+
+	g_sdl_imgui_window = window;
+	g_sdl_imgui_initialized = true;
+	g_sdl_imgui_frame_active = false;
+	return true;
+}
+
+static void ImGUI_ShutdownSDLBackend()
+{
+	if (ImGui::GetCurrentContext() == nullptr)
+	{
+		g_sdl_imgui_window = nullptr;
+		g_sdl_imgui_initialized = false;
+		g_sdl_imgui_frame_active = false;
+		return;
+	}
+
+	ImGUI_ResetTransientInputState();
+	if (g_sdl_imgui_initialized)
+	{
+		ImGui_ImplSDLRenderer2_Shutdown();
+		ImGui_ImplSDL2_Shutdown();
+	}
+	ImGui::DestroyContext();
+	g_sdl_imgui_window = nullptr;
+	g_sdl_imgui_initialized = false;
+	g_sdl_imgui_frame_active = false;
+}
+
+static bool ImGUI_FontHasChineseGlyphs(ImFont* font)
+{
+	return font != nullptr
+		&& font->IsGlyphInFont((ImWchar)0x4E2D)
+		&& font->IsGlyphInFont((ImWchar)0x6587);
+}
+
+static ImFont* ImGUI_AddMergedFontFromFileTTF(const char* primaryFilename, int primaryFontNo, const char* fallbackFilename, int fallbackFontNo, float fallbackGlyphOffsetY = 0.0f)
+{
+	if (primaryFilename == nullptr || primaryFilename[0] == '\0')
+		return nullptr;
+
+	ImGuiIO& io = ImGui::GetIO();
+	const ImWchar* defaultGlyphRanges = io.Fonts->GetGlyphRangesDefault();
+	const ImWchar* cjkGlyphRanges = io.Fonts->GetGlyphRangesChineseFull();
+	constexpr float mergedFontReferenceSize = 18.0f;
+	ImFontConfig primaryConfig;
+	primaryConfig.FontNo = static_cast<ImU32>(std::max(0, primaryFontNo));
+	primaryConfig.SizePixels = mergedFontReferenceSize;
+	ImFont* font = io.Fonts->AddFontFromFileTTF(
+		primaryFilename,
+		0.0f,
+		&primaryConfig,
+		defaultGlyphRanges);
+	if (!font)
+		return nullptr;
+
+	const bool hasFallback = fallbackFilename != nullptr && fallbackFilename[0] != '\0';
+	if (hasFallback)
+	{
+		ImFontConfig fallbackConfig;
+		fallbackConfig.MergeMode = true;
+		fallbackConfig.GlyphExcludeRanges = defaultGlyphRanges;
+		fallbackConfig.FontNo = static_cast<ImU32>(std::max(0, fallbackFontNo));
+		fallbackConfig.SizePixels = mergedFontReferenceSize;
+		fallbackConfig.GlyphOffset.y = fallbackGlyphOffsetY;
+		ImFont* fallbackFont = io.Fonts->AddFontFromFileTTF(
+			fallbackFilename,
+			0.0f,
+			&fallbackConfig,
+			cjkGlyphRanges);
+		if (!fallbackFont)
+		{
+			io.Fonts->Build();
+			return nullptr;
+		}
+	}
+
+	if (!io.Fonts->Build())
+		return nullptr;
+	if (hasFallback && !ImGUI_FontHasChineseGlyphs(font))
+		return nullptr;
+	return font;
+}
+
+static bool ImGUI_NodeEditor_SetStyleVarFloat(int varIndex, float value)
+{
+	auto& style = ax::NodeEditor::GetStyle();
+	switch (varIndex)
+	{
+	case ax::NodeEditor::StyleVar_NodeRounding:             style.NodeRounding = value; return true;
+	case ax::NodeEditor::StyleVar_NodeBorderWidth:          style.NodeBorderWidth = value; return true;
+	case ax::NodeEditor::StyleVar_HoveredNodeBorderWidth:   style.HoveredNodeBorderWidth = value; return true;
+	case ax::NodeEditor::StyleVar_SelectedNodeBorderWidth:  style.SelectedNodeBorderWidth = value; return true;
+	case ax::NodeEditor::StyleVar_PinRounding:              style.PinRounding = value; return true;
+	case ax::NodeEditor::StyleVar_PinBorderWidth:           style.PinBorderWidth = value; return true;
+	case ax::NodeEditor::StyleVar_LinkStrength:             style.LinkStrength = value; return true;
+	case ax::NodeEditor::StyleVar_ScrollDuration:           style.ScrollDuration = value; return true;
+	case ax::NodeEditor::StyleVar_FlowMarkerDistance:       style.FlowMarkerDistance = value; return true;
+	case ax::NodeEditor::StyleVar_FlowSpeed:                style.FlowSpeed = value; return true;
+	case ax::NodeEditor::StyleVar_FlowDuration:             style.FlowDuration = value; return true;
+	case ax::NodeEditor::StyleVar_GroupRounding:            style.GroupRounding = value; return true;
+	case ax::NodeEditor::StyleVar_GroupBorderWidth:         style.GroupBorderWidth = value; return true;
+	case ax::NodeEditor::StyleVar_HighlightConnectedLinks:  style.HighlightConnectedLinks = value; return true;
+	case ax::NodeEditor::StyleVar_SnapLinkToPinDir:         style.SnapLinkToPinDir = value; return true;
+	case ax::NodeEditor::StyleVar_HoveredNodeBorderOffset:  style.HoverNodeBorderOffset = value; return true;
+	case ax::NodeEditor::StyleVar_SelectedNodeBorderOffset: style.SelectedNodeBorderOffset = value; return true;
+	default:                                                return false;
+	}
+}
+
+static bool ImGUI_NodeEditor_SetStyleVarVec2(int varIndex, const ImVec2& value)
+{
+	auto& style = ax::NodeEditor::GetStyle();
+	switch (varIndex)
+	{
+	case ax::NodeEditor::StyleVar_SourceDirection: style.SourceDirection = value; return true;
+	case ax::NodeEditor::StyleVar_TargetDirection: style.TargetDirection = value; return true;
+	case ax::NodeEditor::StyleVar_PivotAlignment:  style.PivotAlignment = value; return true;
+	case ax::NodeEditor::StyleVar_PivotSize:       style.PivotSize = value; return true;
+	case ax::NodeEditor::StyleVar_PivotScale:      style.PivotScale = value; return true;
+	default:                                       return false;
+	}
+}
+
+static bool ImGUI_NodeEditor_SetStyleVarVec4(int varIndex, const ImVec4& value)
+{
+	auto& style = ax::NodeEditor::GetStyle();
+	switch (varIndex)
+	{
+	case ax::NodeEditor::StyleVar_NodePadding: style.NodePadding = value; return true;
+	default:                                   return false;
+	}
+}
 
 void init_imgui_module(lua_State* L)
 {
@@ -257,6 +518,15 @@ void init_imgui_module(lua_State* L)
 					.addVariable("DelayNormal", ImGuiHoveredFlags_DelayNormal)
 					.addVariable("NoSharedDelay", ImGuiHoveredFlags_NoSharedDelay)
 				.endNamespace()
+				.beginNamespace("FocusedFlags")
+					.addVariable("None", ImGuiFocusedFlags_None)
+					.addVariable("ChildWindows", ImGuiFocusedFlags_ChildWindows)
+					.addVariable("RootWindow", ImGuiFocusedFlags_RootWindow)
+					.addVariable("AnyWindow", ImGuiFocusedFlags_AnyWindow)
+					.addVariable("NoPopupHierarchy", ImGuiFocusedFlags_NoPopupHierarchy)
+					.addVariable("DockHierarchy", ImGuiFocusedFlags_DockHierarchy)
+					.addVariable("RootAndChildWindows", ImGuiFocusedFlags_RootAndChildWindows)
+				.endNamespace()
 				.beginNamespace("SelectableFlags")
 					.addVariable("None", ImGuiSelectableFlags_None)
 					.addVariable("NoAutoClosePopups", ImGuiSelectableFlags_NoAutoClosePopups)
@@ -265,6 +535,65 @@ void init_imgui_module(lua_State* L)
 					.addVariable("Disabled", ImGuiSelectableFlags_Disabled)
 					.addVariable("AllowOverlap", ImGuiSelectableFlags_AllowOverlap)
 					.addVariable("Highlight", ImGuiSelectableFlags_Highlight)
+				.endNamespace()
+				.beginNamespace("TableFlags")
+					.addVariable("None", ImGuiTableFlags_None)
+					.addVariable("Resizable", ImGuiTableFlags_Resizable)
+					.addVariable("Reorderable", ImGuiTableFlags_Reorderable)
+					.addVariable("Hideable", ImGuiTableFlags_Hideable)
+					.addVariable("Sortable", ImGuiTableFlags_Sortable)
+					.addVariable("NoSavedSettings", ImGuiTableFlags_NoSavedSettings)
+					.addVariable("ContextMenuInBody", ImGuiTableFlags_ContextMenuInBody)
+					.addVariable("RowBg", ImGuiTableFlags_RowBg)
+					.addVariable("BordersInnerH", ImGuiTableFlags_BordersInnerH)
+					.addVariable("BordersOuterH", ImGuiTableFlags_BordersOuterH)
+					.addVariable("BordersInnerV", ImGuiTableFlags_BordersInnerV)
+					.addVariable("BordersOuterV", ImGuiTableFlags_BordersOuterV)
+					.addVariable("BordersH", ImGuiTableFlags_BordersH)
+					.addVariable("BordersV", ImGuiTableFlags_BordersV)
+					.addVariable("BordersInner", ImGuiTableFlags_BordersInner)
+					.addVariable("BordersOuter", ImGuiTableFlags_BordersOuter)
+					.addVariable("Borders", ImGuiTableFlags_Borders)
+					.addVariable("NoBordersInBody", ImGuiTableFlags_NoBordersInBody)
+					.addVariable("NoBordersInBodyUntilResize", ImGuiTableFlags_NoBordersInBodyUntilResize)
+					.addVariable("SizingFixedFit", ImGuiTableFlags_SizingFixedFit)
+					.addVariable("SizingFixedSame", ImGuiTableFlags_SizingFixedSame)
+					.addVariable("SizingStretchProp", ImGuiTableFlags_SizingStretchProp)
+					.addVariable("SizingStretchSame", ImGuiTableFlags_SizingStretchSame)
+					.addVariable("NoHostExtendX", ImGuiTableFlags_NoHostExtendX)
+					.addVariable("NoHostExtendY", ImGuiTableFlags_NoHostExtendY)
+					.addVariable("NoKeepColumnsVisible", ImGuiTableFlags_NoKeepColumnsVisible)
+					.addVariable("PreciseWidths", ImGuiTableFlags_PreciseWidths)
+					.addVariable("NoClip", ImGuiTableFlags_NoClip)
+					.addVariable("PadOuterX", ImGuiTableFlags_PadOuterX)
+					.addVariable("NoPadOuterX", ImGuiTableFlags_NoPadOuterX)
+					.addVariable("NoPadInnerX", ImGuiTableFlags_NoPadInnerX)
+					.addVariable("ScrollX", ImGuiTableFlags_ScrollX)
+					.addVariable("ScrollY", ImGuiTableFlags_ScrollY)
+					.addVariable("SortMulti", ImGuiTableFlags_SortMulti)
+					.addVariable("SortTristate", ImGuiTableFlags_SortTristate)
+					.addVariable("HighlightHoveredColumn", ImGuiTableFlags_HighlightHoveredColumn)
+				.endNamespace()
+				.beginNamespace("TableColumnFlags")
+					.addVariable("None", ImGuiTableColumnFlags_None)
+					.addVariable("Disabled", ImGuiTableColumnFlags_Disabled)
+					.addVariable("DefaultHide", ImGuiTableColumnFlags_DefaultHide)
+					.addVariable("DefaultSort", ImGuiTableColumnFlags_DefaultSort)
+					.addVariable("WidthStretch", ImGuiTableColumnFlags_WidthStretch)
+					.addVariable("WidthFixed", ImGuiTableColumnFlags_WidthFixed)
+					.addVariable("NoResize", ImGuiTableColumnFlags_NoResize)
+					.addVariable("NoReorder", ImGuiTableColumnFlags_NoReorder)
+					.addVariable("NoHide", ImGuiTableColumnFlags_NoHide)
+					.addVariable("NoClip", ImGuiTableColumnFlags_NoClip)
+					.addVariable("NoSort", ImGuiTableColumnFlags_NoSort)
+					.addVariable("NoSortAscending", ImGuiTableColumnFlags_NoSortAscending)
+					.addVariable("NoSortDescending", ImGuiTableColumnFlags_NoSortDescending)
+					.addVariable("NoHeaderLabel", ImGuiTableColumnFlags_NoHeaderLabel)
+					.addVariable("NoHeaderWidth", ImGuiTableColumnFlags_NoHeaderWidth)
+					.addVariable("PreferSortAscending", ImGuiTableColumnFlags_PreferSortAscending)
+					.addVariable("PreferSortDescending", ImGuiTableColumnFlags_PreferSortDescending)
+					.addVariable("IndentEnable", ImGuiTableColumnFlags_IndentEnable)
+					.addVariable("IndentDisable", ImGuiTableColumnFlags_IndentDisable)
 				.endNamespace()
 				.beginNamespace("PopupFlags")
 					.addVariable("None", ImGuiPopupFlags_None)
@@ -388,6 +717,7 @@ void init_imgui_module(lua_State* L)
 					.addVariable("Home", ImGuiKey_Home)
 					.addVariable("End", ImGuiKey_End)
 					.addVariable("Insert", ImGuiKey_Insert)
+					.addVariable("Delete", ImGuiKey_Delete)
 					.addVariable("DeleteImGuiKey_Delete", ImGuiKey_Delete)
 					.addVariable("Backspace", ImGuiKey_Backspace)
 					.addVariable("Space", ImGuiKey_Space)
@@ -564,6 +894,8 @@ void init_imgui_module(lua_State* L)
 					.addConstructor(+[](void* ptr, float val) { return new (ptr) Float({ val }); },
 						+[](void* ptr) { return new (ptr) Float(); })
 				.endClass()
+				.beginClass<ImGUI_FlowViewCache>("FlowViewCacheHandle")
+				.endClass()
 				.beginClass<ImVec2>("ImVec2")
 					.addProperty("x", &ImVec2::x, &ImVec2::x)
 					.addProperty("y", &ImVec2::y, &ImVec2::y)
@@ -594,6 +926,8 @@ void init_imgui_module(lua_State* L)
 					.addProperty("KeyAlt", &ImGuiIO::KeyAlt, &ImGuiIO::KeyAlt)
 					.addProperty("KeyCtrl", &ImGuiIO::KeyCtrl, &ImGuiIO::KeyCtrl)
 					.addProperty("KeyShift", &ImGuiIO::KeyShift, &ImGuiIO::KeyShift)
+					.addProperty("MouseWheel", &ImGuiIO::MouseWheel, &ImGuiIO::MouseWheel)
+					.addProperty("MouseWheelH", &ImGuiIO::MouseWheelH, &ImGuiIO::MouseWheelH)
 				.endClass()
 				.beginClass<ImGuiStyle>("ImGuiStyle")
 					.addProperty("FontSizeBase", &ImGuiStyle::FontSizeBase, &ImGuiStyle::FontSizeBase)
@@ -664,10 +998,30 @@ void init_imgui_module(lua_State* L)
 					
 				.endClass()
 				.beginClass<ImDrawList>("ImDrawList")
+					.addFunction("AddImage",
+						+[](ImDrawList* draw_list, SDL_Texture* texture, const ImVec2& p_min, const ImVec2& p_max, luabridge::LuaRef uv0, luabridge::LuaRef uv1, luabridge::LuaRef col)
+							{ draw_list->AddImage(texture, p_min, p_max, uv0 ? uv0 : ImVec2(0, 0), uv1 ? uv1 : ImVec2(1, 1), col ? col.cast<ImU32>().value() : IM_COL32_WHITE); },
+						+[](ImDrawList* draw_list, const Texture& texture, const ImVec2& p_min, const ImVec2& p_max, luabridge::LuaRef uv0, luabridge::LuaRef uv1, luabridge::LuaRef col)
+							{ draw_list->AddImage((ImTextureID)texture.id, p_min, p_max, uv0 ? uv0 : ImVec2(0, 0), uv1 ? uv1 : ImVec2(1, 1), col ? col.cast<ImU32>().value() : IM_COL32_WHITE); })
+					.addFunction("AddImageQuad",
+						+[](ImDrawList* draw_list, SDL_Texture* texture, const ImVec2& p1, const ImVec2& p2, const ImVec2& p3, const ImVec2& p4, luabridge::LuaRef uv1, luabridge::LuaRef uv2, luabridge::LuaRef uv3, luabridge::LuaRef uv4, luabridge::LuaRef col)
+							{ draw_list->AddImageQuad(texture, p1, p2, p3, p4, uv1 ? uv1 : ImVec2(0, 0), uv2 ? uv2 : ImVec2(1, 0), uv3 ? uv3 : ImVec2(1, 1), uv4 ? uv4 : ImVec2(0, 1), col ? col.cast<ImU32>().value() : IM_COL32_WHITE); },
+						+[](ImDrawList* draw_list, const Texture& texture, const ImVec2& p1, const ImVec2& p2, const ImVec2& p3, const ImVec2& p4, luabridge::LuaRef uv1, luabridge::LuaRef uv2, luabridge::LuaRef uv3, luabridge::LuaRef uv4, luabridge::LuaRef col)
+							{ draw_list->AddImageQuad((ImTextureID)texture.id, p1, p2, p3, p4, uv1 ? uv1 : ImVec2(0, 0), uv2 ? uv2 : ImVec2(1, 0), uv3 ? uv3 : ImVec2(1, 1), uv4 ? uv4 : ImVec2(0, 1), col ? col.cast<ImU32>().value() : IM_COL32_WHITE); })
+					.addFunction("AddImageRounded",
+						+[](ImDrawList* draw_list, SDL_Texture* texture, const ImVec2& p_min, const ImVec2& p_max, luabridge::LuaRef uv0, luabridge::LuaRef uv1, luabridge::LuaRef col, luabridge::LuaRef rounding, luabridge::LuaRef flags)
+							{ draw_list->AddImageRounded(texture, p_min, p_max, uv0 ? uv0 : ImVec2(0, 0), uv1 ? uv1 : ImVec2(1, 1), col ? col.cast<ImU32>().value() : IM_COL32_WHITE, rounding ? rounding : 0.0f, flags ? flags : 0); },
+						+[](ImDrawList* draw_list, const Texture& texture, const ImVec2& p_min, const ImVec2& p_max, luabridge::LuaRef uv0, luabridge::LuaRef uv1, luabridge::LuaRef col, luabridge::LuaRef rounding, luabridge::LuaRef flags)
+							{ draw_list->AddImageRounded((ImTextureID)texture.id, p_min, p_max, uv0 ? uv0 : ImVec2(0, 0), uv1 ? uv1 : ImVec2(1, 1), col ? col.cast<ImU32>().value() : IM_COL32_WHITE, rounding ? rounding : 0.0f, flags ? flags : 0); })
+					.addFunction("AddRect", +[](ImDrawList* draw_list, const ImVec2& p_min, const ImVec2& p_max, ImU32 col, luabridge::LuaRef rounding, luabridge::LuaRef flags, luabridge::LuaRef thickness)
+						{ draw_list->AddRect(p_min, p_max, col, rounding ? rounding : 0.0f, flags ? flags : 0, thickness ? thickness : 1.0f); })
 					.addFunction("AddRectFilled", +[](ImDrawList* draw_list, const ImVec2& p_min, const ImVec2& p_max, ImU32 col, luabridge::LuaRef rounding, luabridge::LuaRef flags)
 						{ draw_list->AddRectFilled(p_min, p_max, col, rounding ? rounding : 0.0f, flags ? flags : 0); })
 					.addFunction("AddText", +[](ImDrawList* draw_list, const ImVec2& position, ImU32 col, const char* text)
 						{ draw_list->AddText(position, col, text); })
+					.addFunction("PushClipRect", +[](ImDrawList* draw_list, const ImVec2& p_min, const ImVec2& p_max, luabridge::LuaRef intersect_with_current_clip_rect)
+						{ draw_list->PushClipRect(p_min, p_max, intersect_with_current_clip_rect ? intersect_with_current_clip_rect.cast<bool>().value() : false); })
+					.addFunction("PopClipRect", &ImDrawList::PopClipRect)
 				.endClass()
 				.beginClass<ImGuiViewport>("ImGuiViewport")
 					.addProperty("ID", &ImGuiViewport::ID, &ImGuiViewport::ID)
@@ -679,6 +1033,15 @@ void init_imgui_module(lua_State* L)
 					.addProperty("DpiScale", &ImGuiViewport::DpiScale, &ImGuiViewport::DpiScale)
 					.addProperty("ParentViewportId", &ImGuiViewport::ParentViewportId, &ImGuiViewport::ParentViewportId)
 				.endClass()
+				.beginClass<ImGuiListClipper>("ListClipper")
+					.addConstructor<void()>()
+					.addFunction("Begin", +[](ImGuiListClipper* clipper, int items_count, luabridge::LuaRef items_height)
+						{ clipper->Begin(items_count, items_height.isNil() ? -1.0f : items_height); })
+					.addFunction("Step", &ImGuiListClipper::Step)
+					.addFunction("End", &ImGuiListClipper::End)
+					.addFunction("GetDisplayStart", +[](const ImGuiListClipper* clipper) { return clipper->DisplayStart; })
+					.addFunction("GetDisplayEnd", +[](const ImGuiListClipper* clipper) { return clipper->DisplayEnd; })
+				.endClass()
 				// extension: node-editor
 				.beginNamespace("NodeEditor")
 					.beginClass<ax::NodeEditor::Config>("Config")
@@ -688,6 +1051,27 @@ void init_imgui_module(lua_State* L)
 					.beginClass<ax::NodeEditor::EditorContext>("Context")
 
 					.endClass()
+					.beginNamespace("StyleColor")
+						.addVariable("Bg", ax::NodeEditor::StyleColor_Bg)
+						.addVariable("Grid", ax::NodeEditor::StyleColor_Grid)
+						.addVariable("NodeBg", ax::NodeEditor::StyleColor_NodeBg)
+						.addVariable("NodeBorder", ax::NodeEditor::StyleColor_NodeBorder)
+						.addVariable("HoveredNodeBorder", ax::NodeEditor::StyleColor_HovNodeBorder)
+						.addVariable("SelectedNodeBorder", ax::NodeEditor::StyleColor_SelNodeBorder)
+						.addVariable("NodeSelectionRect", ax::NodeEditor::StyleColor_NodeSelRect)
+						.addVariable("NodeSelectionRectBorder", ax::NodeEditor::StyleColor_NodeSelRectBorder)
+						.addVariable("HoveredLinkBorder", ax::NodeEditor::StyleColor_HovLinkBorder)
+						.addVariable("SelectedLinkBorder", ax::NodeEditor::StyleColor_SelLinkBorder)
+						.addVariable("HighlightLinkBorder", ax::NodeEditor::StyleColor_HighlightLinkBorder)
+						.addVariable("LinkSelectionRect", ax::NodeEditor::StyleColor_LinkSelRect)
+						.addVariable("LinkSelectionRectBorder", ax::NodeEditor::StyleColor_LinkSelRectBorder)
+						.addVariable("PinRect", ax::NodeEditor::StyleColor_PinRect)
+						.addVariable("PinRectBorder", ax::NodeEditor::StyleColor_PinRectBorder)
+						.addVariable("Flow", ax::NodeEditor::StyleColor_Flow)
+						.addVariable("FlowMarker", ax::NodeEditor::StyleColor_FlowMarker)
+						.addVariable("GroupBg", ax::NodeEditor::StyleColor_GroupBg)
+						.addVariable("GroupBorder", ax::NodeEditor::StyleColor_GroupBorder)
+					.endNamespace()
 					.beginClass<ax::NodeEditor::NodeId>("NodeId")
 						.addFunction("get", +[](const ax::NodeEditor::NodeId& id) { return (size_t)id; })
 						.addFunction("check_valid", +[](const ax::NodeEditor::NodeId& id) { return (bool)id; })
@@ -710,7 +1094,7 @@ void init_imgui_module(lua_State* L)
 				// example
 				.addFunction("ShowDemoWindow", +[](luabridge::LuaRef open) { ImGui::ShowDemoWindow(open.isNil() ? nullptr : &open.cast<Bool*>().value()->val);})
 				// config
-				.addFunction("GetIO", ImGui::GetIO)
+				.addFunction("GetIO", +[]() -> ImGuiIO& { return ImGui::GetIO(); })
 				// backend
 				.addFunction("rlImGuiSetup", rlImGuiSetup)
 				.addFunction("rlImGuiShutdown", rlImGuiShutdown)
@@ -718,35 +1102,98 @@ void init_imgui_module(lua_State* L)
 				.addFunction("rlImGuiEnd", rlImGuiEnd)
 				.addFunction("sdlImGuiSetup", +[](SDL_Window* window, SDL_Renderer* renderer)
 					{
-						ImGui::CreateContext();
-						ImGui_ImplSDL2_InitForSDLRenderer(window, renderer);
-						ImGui_ImplSDLRenderer2_Init(renderer);
+						return ImGUI_SetupSDLBackend(window, renderer);
 					})
 				.addFunction("sdlImGuiShutdown", +[]()
 					{
-						ImGui_ImplSDLRenderer2_Shutdown();
-						ImGui_ImplSDL2_Shutdown();
-						ImGui::DestroyContext();
+						ImGUI_ShutdownSDLBackend();
 					})
-				.addFunction("sdlImGuiProcessEvent", ImGui_ImplSDL2_ProcessEvent)
+				.addFunction("sdlImGuiProcessEvent", +[](const SDL_Event* event)
+					{
+						if (!ImGUI_SDLBackendReady())
+							return false;
+						const bool preserve_text_input_focus = ImGUI_IsSDLWindowFocusLostEvent(event) && ImGUI_IsTextInputSessionActive();
+						const bool handled = event != nullptr && (preserve_text_input_focus || ImGui_ImplSDL2_ProcessEvent(event));
+						if (ImGUI_IsSDLWindowFocusLostEvent(event))
+						{
+							ImGUI_HandleSoftFocusLost(preserve_text_input_focus);
+							return handled;
+						}
+						bool focus_lost = false;
+						if (ImGUI_ShouldResetTransientInputForSDLEvent(event, &focus_lost))
+							ImGUI_ResetTransientInputState(focus_lost, focus_lost, focus_lost);
+						return handled;
+					})
 				.addFunction("sdlImGuiBegin", +[]()
 					{
+						if (!ImGUI_SDLBackendReady())
+							return false;
 						ImGui_ImplSDLRenderer2_NewFrame();
 						ImGui_ImplSDL2_NewFrame();
 						ImGui::NewFrame();
+						g_sdl_imgui_frame_active = true;
+						return true;
 					})
 				.addFunction("sdlImGuiEnd", +[](SDL_Renderer* renderer)
 					{
+						if (!ImGUI_SDLBackendReady() || !g_sdl_imgui_frame_active)
+							return;
 						ImGui::Render();
+						g_sdl_imgui_frame_active = false;
+						if (renderer == nullptr)
+							return;
+						if (g_sdl_imgui_window != nullptr && (SDL_GetWindowFlags(g_sdl_imgui_window) & SDL_WINDOW_MINIMIZED) != 0)
+							return;
+						int output_width = 0;
+						int output_height = 0;
+						if (SDL_GetRendererOutputSize(renderer, &output_width, &output_height) != 0 || output_width <= 0 || output_height <= 0)
+							return;
 						ImGui_ImplSDLRenderer2_RenderDrawData(ImGui::GetDrawData(), renderer);
 					})
-				// font
-				.addFunction("AddFontFromFileTTF", +[](const char* filename)
+				.addFunction("ResetTransientInputState", +[]() { ImGUI_ResetTransientInputState(true, true, true); })
+				.addFunction("ClosePopupsExceptModals", +[]()
 					{
-						ImFont* font = ImGui::GetIO().Fonts->AddFontFromFileTTF(filename, 0.0f, nullptr, ImGui::GetIO().Fonts->GetGlyphRangesChineseFull()); 
+						if (ImGui::GetCurrentContext() != nullptr)
+							ImGui::ClosePopupsExceptModals();
+					})
+				.addFunction("ClearActiveID", +[]()
+					{
+						if (ImGui::GetCurrentContext() != nullptr)
+							ImGui::ClearActiveID();
+					})
+				// font
+				.addFunction("AddFontFromFileTTF",
+					luabridge::overload<const char*>(+[](const char* filename)
+					{
+						ImFont* font = ImGui::GetIO().Fonts->AddFontFromFileTTF(filename, 0.0f, nullptr, ImGui::GetIO().Fonts->GetGlyphRangesChineseFull());
 						if (font) ImGui::GetIO().Fonts->Build();
 						return font;
-					})
+					}),
+					luabridge::overload<const char*, int>(+[](const char* filename, int fontNo)
+					{
+						ImFontConfig config;
+						config.FontNo = static_cast<ImU32>(std::max(0, fontNo));
+						ImFont* font = ImGui::GetIO().Fonts->AddFontFromFileTTF(
+							filename,
+							0.0f,
+							&config,
+							ImGui::GetIO().Fonts->GetGlyphRangesChineseFull());
+						if (font) ImGui::GetIO().Fonts->Build();
+						return font;
+					}))
+				.addFunction("AddMergedFontFromFileTTF",
+					luabridge::overload<const char*, const char*>(+[](const char* primaryFilename, const char* fallbackFilename)
+					{
+						return ImGUI_AddMergedFontFromFileTTF(primaryFilename, 0, fallbackFilename, 0);
+					}),
+					luabridge::overload<const char*, int, const char*, int>(+[](const char* primaryFilename, int primaryFontNo, const char* fallbackFilename, int fallbackFontNo)
+					{
+						return ImGUI_AddMergedFontFromFileTTF(primaryFilename, primaryFontNo, fallbackFilename, fallbackFontNo);
+					}),
+					luabridge::overload<const char*, int, const char*, int, float>(+[](const char* primaryFilename, int primaryFontNo, const char* fallbackFilename, int fallbackFontNo, float fallbackGlyphOffsetY)
+					{
+						return ImGUI_AddMergedFontFromFileTTF(primaryFilename, primaryFontNo, fallbackFilename, fallbackFontNo, fallbackGlyphOffsetY);
+					}))
 				.addFunction("PushFont", luabridge::overload<ImFont*, float>(ImGui::PushFont), luabridge::overload<ImFont*>(ImGui::PushFont))
 				.addFunction("PopFont", ImGui::PopFont)
 				// window
@@ -755,7 +1202,15 @@ void init_imgui_module(lua_State* L)
 					{ ImGui::SetNextWindowPos(pos, cond ? cond : 0, pivot ? pivot : ImVec2(0, 0)); })
 				.addFunction("SetNextWindowSize", +[](const ImVec2& pos, luabridge::LuaRef cond) 
 					{ ImGui::SetNextWindowSize(pos, cond ? cond : 0); })
+				.addFunction("SetNextWindowSizeConstraints", +[](const ImVec2& min_size, const ImVec2& max_size)
+					{ ImGui::SetNextWindowSizeConstraints(min_size, max_size); })
 				.addFunction("SetNextWindowViewport", ImGui::SetNextWindowViewport)
+				.addFunction("SetNextWindowDockID", +[](ImGuiID dock_id, luabridge::LuaRef cond)
+					{ ImGui::SetNextWindowDockID(dock_id, cond ? cond : 0); })
+				.addFunction("SetNextWindowFocus", ImGui::SetNextWindowFocus)
+				.addFunction("SetWindowFocus",
+					luabridge::overload<>(+[]() { ImGui::SetWindowFocus(); }),
+					luabridge::overload<const char*>(+[](const char* name) { ImGui::SetWindowFocus(name); }))
 				.addFunction("DockSpace", +[](ImGuiID dockspace_id, luabridge::LuaRef size, luabridge::LuaRef flags) 
 					{ ImGui::DockSpace(dockspace_id, size ? size : ImVec2(0, 0), flags ? flags : 0); })
 				.addFunction("Begin", +[](const char* name, luabridge::LuaRef open, luabridge::LuaRef flags)
@@ -768,15 +1223,30 @@ void init_imgui_module(lua_State* L)
 				.addFunction("EndTooltip", ImGui::EndTooltip)
 				.addFunction("OpenPopup", +[](const char* str_id, luabridge::LuaRef flags) { ImGui::OpenPopup(str_id, flags ? flags : 0); })
 				.addFunction("BeginPopup", +[](const char* str_id, luabridge::LuaRef flags) { return ImGui::BeginPopup(str_id, flags ? flags : 0); })
+				.addFunction("BeginPopupModal", +[](const char* str_id, luabridge::LuaRef open, luabridge::LuaRef flags)
+					{ return ImGui::BeginPopupModal(str_id, open.isNil() ? nullptr : &open.cast<Bool*>().value()->val, flags.isNil() ? 0 : flags); })
+				.addFunction("IsPopupOpen", +[](const char* str_id, luabridge::LuaRef flags) { return ImGui::IsPopupOpen(str_id, flags ? flags : 0); })
 				.addFunction("EndPopup", ImGui::EndPopup)
+				.addFunction("CloseCurrentPopup", ImGui::CloseCurrentPopup)
 				.addFunction("CollapsingHeader", +[](const char* label, luabridge::LuaRef flags) { return ImGui::CollapsingHeader(label, flags ? flags : 0);})
 				// interaction
 				.addFunction("IsItemHovered", +[](luabridge::LuaRef flags) { return ImGui::IsItemHovered(flags ? flags : 0); })
+				.addFunction("IsItemClicked", +[](luabridge::LuaRef mouse_button) { return ImGui::IsItemClicked(mouse_button.isNil() ? 0 : mouse_button); })
+				.addFunction("IsItemActive", ImGui::IsItemActive)
+				.addFunction("IsItemFocused", ImGui::IsItemFocused)
+				.addFunction("IsItemVisible", ImGui::IsItemVisible)
 				.addFunction("IsAnyItemHovered", ImGui::IsAnyItemHovered)
 				.addFunction("IsAnyItemActive", ImGui::IsAnyItemActive)
+				.addFunction("IsAnyItemFocused", ImGui::IsAnyItemFocused)
+				.addFunction("IsMouseDown", +[](int button) { return ImGui::IsMouseDown((ImGuiMouseButton)button); })
+				.addFunction("IsMouseClicked", +[](int button, luabridge::LuaRef repeat) { return ImGui::IsMouseClicked((ImGuiMouseButton)button, repeat.isNil() ? false : repeat); })
+				.addFunction("IsMouseDoubleClicked", +[](int button) { return ImGui::IsMouseDoubleClicked((ImGuiMouseButton)button); })
+				.addFunction("IsMouseReleased", +[](int button) { return ImGui::IsMouseReleased((ImGuiMouseButton)button); })
+				.addFunction("IsKeyDown", +[](int key) { return ImGui::IsKeyDown((ImGuiKey)key); })
 				.addFunction("IsKeyPressed", +[](int key, luabridge::LuaRef repeat) { return ImGui::IsKeyPressed((ImGuiKey)key, repeat.isNil() ? true : repeat); })
 				.addFunction("IsKeyReleased", +[](int key) { return ImGui::IsKeyReleased((ImGuiKey)key); })
 				.addFunction("IsWindowHovered", +[](luabridge::LuaRef flags) { return ImGui::IsWindowHovered(flags ? flags : 0); })
+				.addFunction("IsWindowFocused", +[](luabridge::LuaRef flags) { return ImGui::IsWindowFocused(flags ? flags : 0); })
 				.addFunction("BeginDisabled", +[](luabridge::LuaRef disabled, lua_State* L) { ImGui::BeginDisabled(lua_gettop(L) == 0 ? true : disabled); })
 				.addFunction("EndDisabled", ImGui::EndDisabled)
 				.addFunction("IsItemDeactivated", ImGui::IsItemDeactivated)
@@ -804,11 +1274,16 @@ void init_imgui_module(lua_State* L)
 				// widgets
 				.addFunction("Spacing", ImGui::Spacing)
 				.addFunction("Dummy", ImGui::Dummy)
+				.addFunction("InvisibleButton", +[](const char* str_id, const ImVec2& size) { return ImGui::InvisibleButton(str_id, size); })
 				.addFunction("Bullet", ImGui::Bullet)
 				.addFunction("Separator", ImGui::Separator)
+				.addFunction("PushID", luabridge::overload<const char*>(ImGui::PushID), luabridge::overload<int>(ImGui::PushID))
+				.addFunction("PopID", ImGui::PopID)
 				.addFunction("SetTooltip", +[](const char* text) { ImGui::SetTooltip(text); })
 				.addFunction("BulletText", +[](const char* text) { ImGui::BulletText(text); })
 				.addFunction("Text", +[](const char* text) { ImGui::TextUnformatted(text); })
+				.addFunction("TextWrapped", +[](const char* text) { ImGui::TextWrapped("%s", text ? text : ""); })
+				.addFunction("TextUnformatted", +[](const char* text) { ImGui::TextUnformatted(text); })
 				.addFunction("TextColored", +[](const ImVec4& color, const char* text) { ImGui::TextColored(color, text); })
 				.addFunction("TextDisabled", +[](const char* text) { ImGui::TextDisabled(text); })
 				.addFunction("SeparatorText", +[](const char* label) { ImGui::SeparatorText(label); })
@@ -817,6 +1292,11 @@ void init_imgui_module(lua_State* L)
 					+[](const char* label, Int* val, int num) { return ImGui::RadioButton(label, &val->val, num); })
 				.addFunction("Button", +[](const char* label, luabridge::LuaRef size) { return ImGui::Button(label, size.isNil() ? ImVec2(0, 0) : size); })
 				.addFunction("SmallButton", ImGui::SmallButton)
+				.addFunction("ProgressBar", +[](float fraction, luabridge::LuaRef size_arg, luabridge::LuaRef overlay)
+					{
+						ImGui::ProgressBar(fraction, size_arg.isNil() ? ImVec2(0, 0) : size_arg,
+							overlay.isNil() ? nullptr : overlay.cast<const char*>().value());
+					})
 				.addFunction("ImageButton", 
 					+[](const char* str_id, SDL_Texture* texture, const ImVec2& size, luabridge::LuaRef uv0, luabridge::LuaRef uv1, luabridge::LuaRef bg_col, luabridge::LuaRef tint_col)
 						{ return ImGui::ImageButton(str_id, texture, size, uv0 ? uv0 : ImVec2(0, 0), uv1 ? uv1 : ImVec2(1, 1), bg_col ? bg_col : ImVec4(0, 0, 0, 0), tint_col ? tint_col : ImVec4(1, 1, 1, 1)); }, 
@@ -882,8 +1362,40 @@ void init_imgui_module(lua_State* L)
 				.addFunction("ColorPicker4", +[](const char* label, ImColor& color, luabridge::LuaRef flags) { return ImGui::ColorPicker4(label, &color.Value.x, flags ? flags : 0); })
 				.addFunction("BeginCombo", +[](const char* label, const char* preview_value, luabridge::LuaRef flags) { return ImGui::BeginCombo(label, preview_value, flags ? flags : 0); })
 				.addFunction("EndCombo", ImGui::EndCombo)
+				.addFunction("BeginTable", +[](const char* str_id, int column, luabridge::LuaRef flags, luabridge::LuaRef outer_size, luabridge::LuaRef inner_width)
+					{
+						return ImGui::BeginTable(
+							str_id,
+							column,
+							flags.isNil() ? ImGuiTableFlags_None : static_cast<ImGuiTableFlags>(flags.cast<int>().value()),
+							outer_size.isNil() ? ImVec2(0, 0) : outer_size.cast<ImVec2>().value(),
+							inner_width.isNil() ? 0.0f : inner_width.cast<float>().value());
+					})
+				.addFunction("EndTable", ImGui::EndTable)
+				.addFunction("TableSetupColumn", +[](const char* label, luabridge::LuaRef flags, luabridge::LuaRef init_width_or_weight, luabridge::LuaRef user_id)
+					{
+						ImGui::TableSetupColumn(
+							label,
+							flags.isNil() ? ImGuiTableColumnFlags_None : static_cast<ImGuiTableColumnFlags>(flags.cast<int>().value()),
+							init_width_or_weight.isNil() ? 0.0f : init_width_or_weight.cast<float>().value(),
+							user_id.isNil() ? 0 : user_id.cast<ImU32>().value());
+					})
+				.addFunction("TableHeadersRow", ImGui::TableHeadersRow)
+				.addFunction("TableNextRow", +[](luabridge::LuaRef row_flags, luabridge::LuaRef min_row_height)
+					{
+						ImGui::TableNextRow(
+							row_flags.isNil() ? ImGuiTableRowFlags_None : static_cast<ImGuiTableRowFlags>(row_flags.cast<int>().value()),
+							min_row_height.isNil() ? 0.0f : min_row_height.cast<float>().value());
+					})
+				.addFunction("TableNextColumn", ImGui::TableNextColumn)
+				.addFunction("TableSetColumnIndex", ImGui::TableSetColumnIndex)
 				// style
 				.addFunction("GetStyle", ImGui::GetStyle)
+				.addFunction("StyleColorsDark", +[]() { ImGui::StyleColorsDark(); })
+				.addFunction("StyleColorsLight", +[]() { ImGui::StyleColorsLight(); })
+				.addFunction("StyleColorsClassic", +[]() { ImGui::StyleColorsClassic(); })
+				.addFunction("SetStyleColor", +[](ImGuiCol col, const ImVec4& color) { ImGui::GetStyle().Colors[col] = color; })
+				.addFunction("GetStyleColor", +[](ImGuiCol col) { return ImGui::GetStyleColorVec4(col); })
 				.addFunction("PushStyleVar", luabridge::overload<ImGuiStyleVar, float>(ImGui::PushStyleVar), luabridge::overload<ImGuiStyleVar, const ImVec2&>(ImGui::PushStyleVar))
 				.addFunction("PopStyleVar", +[](luabridge::LuaRef count) { ImGui::PopStyleVar(count ? count : 1); })
 				.addFunction("PushStyleColor", luabridge::overload<ImGuiCol, const ImVec4&>(ImGui::PushStyleColor), luabridge::overload<ImGuiCol, ImU32>(ImGui::PushStyleColor))
@@ -906,13 +1418,21 @@ void init_imgui_module(lua_State* L)
 				.addFunction("SetWindowSize", +[](const ImVec2& size, luabridge::LuaRef cond) { ImGui::SetWindowSize(size, cond ? cond : 0); }, 
 					+[](const char* name, const ImVec2& size, luabridge::LuaRef cond) { ImGui::SetWindowSize(name, size, cond ? cond : 0); })
 				.addFunction("GetWindowSize", ImGui::GetWindowSize)
+				.addFunction("IsWindowDocked", ImGui::IsWindowDocked)
+				.addFunction("GetWindowDockID", ImGui::GetWindowDockID)
 				.addFunction("GetContentRegionAvail", ImGui::GetContentRegionAvail)
+				.addFunction("GetFrameHeight", ImGui::GetFrameHeight)
+				.addFunction("GetFrameHeightWithSpacing", ImGui::GetFrameHeightWithSpacing)
 				.addFunction("GetTextLineHeight", ImGui::GetTextLineHeight)
 				.addFunction("GetTextLineHeightWithSpacing", ImGui::GetTextLineHeightWithSpacing)
 				.addFunction("CalcTextSize", +[](const char* text, luabridge::LuaRef hide_text_after_double_hash, luabridge::LuaRef wrap_width) 
 					{ return ImGui::CalcTextSize(text, 0, hide_text_after_double_hash ? hide_text_after_double_hash : false, wrap_width ? wrap_width : -1.0f); })
 				.addFunction("SameLine", +[](luabridge::LuaRef offset_from_start_x, luabridge::LuaRef spacing_w) 
 					{ ImGui::SameLine(offset_from_start_x.isNil() ? 0.0f : offset_from_start_x, spacing_w.isNil() ? -1.0f : spacing_w); })
+				.addFunction("SetKeyboardFocusHere", +[](luabridge::LuaRef offset, lua_State* L)
+					{
+						ImGui::SetKeyboardFocusHere(lua_gettop(L) == 0 || offset.isNil() ? 0 : offset.cast<int>().value());
+					})
 				.addFunction("BeginGroup", ImGui::BeginGroup)
 				.addFunction("EndGroup", ImGui::EndGroup)
 				.addFunction("AlignTextToFramePadding", ImGui::AlignTextToFramePadding)
@@ -920,20 +1440,70 @@ void init_imgui_module(lua_State* L)
 				.addFunction("GetScrollY", ImGui::GetScrollY)
 				.addFunction("GetScrollMaxX", ImGui::GetScrollMaxX)
 				.addFunction("GetScrollMaxY", ImGui::GetScrollMaxY)
-				.addFunction("SetScrollHereX", ImGui::SetScrollHereX)
-				.addFunction("SetScrollHereY", ImGui::SetScrollHereY)
+				.addFunction("SetScrollY", +[](float scroll_y) { ImGui::SetScrollY(scroll_y); })
+				.addFunction("SetScrollHereX", +[](luabridge::LuaRef center_x_ratio) { ImGui::SetScrollHereX(center_x_ratio.isNil() ? 0.5f : center_x_ratio.cast<float>().value()); })
+				.addFunction("SetScrollHereY", +[](luabridge::LuaRef center_y_ratio) { ImGui::SetScrollHereY(center_y_ratio.isNil() ? 0.5f : center_y_ratio.cast<float>().value()); })
 				// other
 				.addFunction("GetID", luabridge::overload<const char*>(ImGui::GetID), luabridge::overload<int>(ImGui::GetID))
 				.addFunction("GetWindowDrawList", ImGui::GetWindowDrawList)
+				.beginNamespace("FlowViewCache")
+					.addFunction("Create", ImGUI_FlowViewCache_Create)
+					.addFunction("Destroy", ImGUI_FlowViewCache_Destroy)
+					.addFunction("Invalidate", ImGUI_FlowViewCache_Invalidate)
+					.addFunction("ReleaseTarget", ImGUI_FlowViewCache_ReleaseTarget)
+					.addFunction("IsValid", ImGUI_FlowViewCache_IsValid)
+					.addFunction("CaptureCurrentWindow", ImGUI_FlowViewCache_CaptureCurrentWindow)
+					.addFunction("DrawCurrentWindow", ImGUI_FlowViewCache_DrawCurrentWindow)
+				.endNamespace()
 				// extension: node-editor
 				.beginNamespace("NodeEditor")
+					.beginNamespace("StyleVar")
+						.addVariable("NodePadding", ax::NodeEditor::StyleVar_NodePadding)
+						.addVariable("NodeRounding", ax::NodeEditor::StyleVar_NodeRounding)
+						.addVariable("NodeBorderWidth", ax::NodeEditor::StyleVar_NodeBorderWidth)
+						.addVariable("HoveredNodeBorderWidth", ax::NodeEditor::StyleVar_HoveredNodeBorderWidth)
+						.addVariable("SelectedNodeBorderWidth", ax::NodeEditor::StyleVar_SelectedNodeBorderWidth)
+						.addVariable("PinRounding", ax::NodeEditor::StyleVar_PinRounding)
+						.addVariable("PinBorderWidth", ax::NodeEditor::StyleVar_PinBorderWidth)
+						.addVariable("LinkStrength", ax::NodeEditor::StyleVar_LinkStrength)
+						.addVariable("SourceDirection", ax::NodeEditor::StyleVar_SourceDirection)
+						.addVariable("TargetDirection", ax::NodeEditor::StyleVar_TargetDirection)
+						.addVariable("ScrollDuration", ax::NodeEditor::StyleVar_ScrollDuration)
+						.addVariable("FlowMarkerDistance", ax::NodeEditor::StyleVar_FlowMarkerDistance)
+						.addVariable("FlowSpeed", ax::NodeEditor::StyleVar_FlowSpeed)
+						.addVariable("FlowDuration", ax::NodeEditor::StyleVar_FlowDuration)
+						.addVariable("PivotAlignment", ax::NodeEditor::StyleVar_PivotAlignment)
+						.addVariable("PivotSize", ax::NodeEditor::StyleVar_PivotSize)
+						.addVariable("PivotScale", ax::NodeEditor::StyleVar_PivotScale)
+						.addVariable("PinCorners", ax::NodeEditor::StyleVar_PinCorners)
+						.addVariable("PinRadius", ax::NodeEditor::StyleVar_PinRadius)
+						.addVariable("PinArrowSize", ax::NodeEditor::StyleVar_PinArrowSize)
+						.addVariable("PinArrowWidth", ax::NodeEditor::StyleVar_PinArrowWidth)
+						.addVariable("GroupRounding", ax::NodeEditor::StyleVar_GroupRounding)
+						.addVariable("GroupBorderWidth", ax::NodeEditor::StyleVar_GroupBorderWidth)
+						.addVariable("HighlightConnectedLinks", ax::NodeEditor::StyleVar_HighlightConnectedLinks)
+						.addVariable("SnapLinkToPinDir", ax::NodeEditor::StyleVar_SnapLinkToPinDir)
+						.addVariable("HoveredNodeBorderOffset", ax::NodeEditor::StyleVar_HoveredNodeBorderOffset)
+						.addVariable("SelectedNodeBorderOffset", ax::NodeEditor::StyleVar_SelectedNodeBorderOffset)
+					.endNamespace()
 					.addFunction("Create", +[](luabridge::LuaRef config)
 						{ return ax::NodeEditor::CreateEditor(config.isNil() ? nullptr : config.cast<ax::NodeEditor::Config*>().value()); })
 					.addFunction("Destroy", ax::NodeEditor::DestroyEditor)
 					.addFunction("Suspend", ax::NodeEditor::Suspend)
 					.addFunction("IsSuspended", ax::NodeEditor::IsSuspended)
 					.addFunction("Resume", ax::NodeEditor::Resume)
-					.addFunction("SetCurrentEditor", ax::NodeEditor::SetCurrentEditor)
+					.addFunction("SetCurrentEditor", +[](luabridge::LuaRef ctx)
+						{ ax::NodeEditor::SetCurrentEditor(ctx.isNil() ? nullptr : ctx.cast<ax::NodeEditor::EditorContext*>().value()); })
+					.addFunction("GetCurrentEditor", +[]()
+						{ return ax::NodeEditor::GetCurrentEditor(); })
+					.addFunction("SetStyleVar",
+						luabridge::overload<int, float>(ImGUI_NodeEditor_SetStyleVarFloat),
+						luabridge::overload<int, const ImVec2&>(ImGUI_NodeEditor_SetStyleVarVec2),
+						luabridge::overload<int, const ImVec4&>(ImGUI_NodeEditor_SetStyleVarVec4))
+					.addFunction("SetStyleColor", +[](int colorIndex, const ImVec4& color)
+						{ ax::NodeEditor::GetStyle().Colors[colorIndex] = color; })
+					.addFunction("GetStyleColor", +[](int colorIndex)
+						{ return ax::NodeEditor::GetStyle().Colors[colorIndex]; })
 					.addFunction("Begin", +[](const char* id, luabridge::LuaRef size) {	ax::NodeEditor::Begin(id, size.isNil() ? ImVec2(0, 0) : size); })
 					.addFunction("End", ax::NodeEditor::End)
 					.addFunction("GetNodePosition", ax::NodeEditor::GetNodePosition)
@@ -983,10 +1553,106 @@ void init_imgui_module(lua_State* L)
 						{ ax::NodeEditor::NavigateToContent(duration.isNil() ? -1.0f : duration); })
 					.addFunction("NavigateToSelection", +[](luabridge::LuaRef zoom_in, luabridge::LuaRef duration)
 						{ ax::NodeEditor::NavigateToSelection(zoom_in.isNil() ? false : zoom_in, duration.isNil() ? -1.0f : duration); })
+					.addFunction("SetViewRect", +[](float min_x, float min_y, float max_x, float max_y)
+						{ return ImGUI_NodeEditor_SetViewRect(min_x, min_y, max_x, max_y); })
+					.addFunction("NavigateToViewRect", +[](float min_x, float min_y, float max_x, float max_y, luabridge::LuaRef duration)
+						{ return ImGUI_NodeEditor_NavigateToViewRect(min_x, min_y, max_x, max_y, duration.isNil() ? -1.0f : duration); })
+					.addFunction("GetCurrentZoom", +[]()
+						{
+							const float inverseScale = ax::NodeEditor::GetCurrentZoom();
+							if (inverseScale <= 0.0f)
+								return 1.0f;
+							return 1.0f / inverseScale;
+						})
+					.addFunction("GetRuntimeState", +[](lua_State* L)
+						{
+							ImGUI_NodeEditor_RuntimeState state = {};
+							if (!ImGUI_NodeEditor_GetRuntimeState(state))
+							{
+								lua_pushnil(L);
+								return luabridge::LuaRef::fromStack(L, -1);
+							}
+
+							lua_createtable(L, 0, 23);
+							lua_pushboolean(L, state.is_focused);
+							lua_setfield(L, -2, "is_focused");
+							lua_pushboolean(L, state.is_hovered);
+							lua_setfield(L, -2, "is_hovered");
+							lua_pushboolean(L, state.is_hovered_without_overlap);
+							lua_setfield(L, -2, "is_hovered_without_overlap");
+							lua_pushboolean(L, state.can_accept_user_input);
+							lua_setfield(L, -2, "can_accept_user_input");
+							lua_pushboolean(L, state.has_current_action);
+							lua_setfield(L, -2, "has_current_action");
+							lua_pushboolean(L, state.has_live_animation);
+							lua_setfield(L, -2, "has_live_animation");
+							lua_pushboolean(L, state.is_navigating);
+							lua_setfield(L, -2, "is_navigating");
+							lua_pushboolean(L, state.is_suspended);
+							lua_setfield(L, -2, "is_suspended");
+							lua_pushinteger(L, static_cast<lua_Integer>(state.hovered_node_id));
+							lua_setfield(L, -2, "hovered_node_id");
+							lua_pushinteger(L, static_cast<lua_Integer>(state.hovered_pin_id));
+							lua_setfield(L, -2, "hovered_pin_id");
+							lua_pushinteger(L, static_cast<lua_Integer>(state.hovered_link_id));
+							lua_setfield(L, -2, "hovered_link_id");
+							lua_pushboolean(L, state.hovered_node_id != 0 || state.hovered_pin_id != 0 || state.hovered_link_id != 0);
+							lua_setfield(L, -2, "has_hovered_object");
+							lua_pushnumber(L, state.view_origin.x);
+							lua_setfield(L, -2, "view_origin_x");
+							lua_pushnumber(L, state.view_origin.y);
+							lua_setfield(L, -2, "view_origin_y");
+							lua_pushnumber(L, state.view_scale);
+							lua_setfield(L, -2, "view_scale");
+							lua_pushnumber(L, state.canvas_rect.x);
+							lua_setfield(L, -2, "canvas_min_x");
+							lua_pushnumber(L, state.canvas_rect.y);
+							lua_setfield(L, -2, "canvas_min_y");
+							lua_pushnumber(L, state.canvas_rect.z);
+							lua_setfield(L, -2, "canvas_max_x");
+							lua_pushnumber(L, state.canvas_rect.w);
+							lua_setfield(L, -2, "canvas_max_y");
+							lua_pushnumber(L, state.view_rect.x);
+							lua_setfield(L, -2, "view_min_x");
+							lua_pushnumber(L, state.view_rect.y);
+							lua_setfield(L, -2, "view_min_y");
+							lua_pushnumber(L, state.view_rect.z);
+							lua_setfield(L, -2, "view_max_x");
+							lua_pushnumber(L, state.view_rect.w);
+							lua_setfield(L, -2, "view_max_y");
+							return luabridge::LuaRef::fromStack(L, -1);
+						})
 					.addFunction("HasSelectionChanged", ax::NodeEditor::HasSelectionChanged)
 					.addFunction("GetSelectedObjectCount", ax::NodeEditor::GetSelectedObjectCount)
-					//.addFunction("GetSelectedNodes", ax::NodeEditor::GetSelectedNodes)
-					//.addFunction("GetSelectedLinks", ax::NodeEditor::GetSelectedLinks)
+					.addFunction("GetSelectedNodes", +[](lua_State* L)
+						{
+							const int selectedCount = ax::NodeEditor::GetSelectedObjectCount();
+							std::vector<ax::NodeEditor::NodeId> nodes;
+							nodes.resize(selectedCount > 0 ? selectedCount : 0);
+							const int nodeCount = nodes.empty() ? 0 : ax::NodeEditor::GetSelectedNodes(nodes.data(), static_cast<int>(nodes.size()));
+							lua_createtable(L, nodeCount, 0);
+							for (int index = 0; index < nodeCount; ++index)
+							{
+								lua_pushinteger(L, static_cast<lua_Integer>(static_cast<size_t>(nodes[index])));
+								lua_rawseti(L, -2, index + 1);
+							}
+							return luabridge::LuaRef::fromStack(L, -1);
+						})
+					.addFunction("GetSelectedLinks", +[](lua_State* L)
+						{
+							const int selectedCount = ax::NodeEditor::GetSelectedObjectCount();
+							std::vector<ax::NodeEditor::LinkId> links;
+							links.resize(selectedCount > 0 ? selectedCount : 0);
+							const int linkCount = links.empty() ? 0 : ax::NodeEditor::GetSelectedLinks(links.data(), static_cast<int>(links.size()));
+							lua_createtable(L, linkCount, 0);
+							for (int index = 0; index < linkCount; ++index)
+							{
+								lua_pushinteger(L, static_cast<lua_Integer>(static_cast<size_t>(links[index])));
+								lua_rawseti(L, -2, index + 1);
+							}
+							return luabridge::LuaRef::fromStack(L, -1);
+						})
+					.addFunction("IsActive", ax::NodeEditor::IsActive)
 					.addFunction("IsNodeSelected", ax::NodeEditor::IsNodeSelected)
 					.addFunction("IsLinkSelected", ax::NodeEditor::IsLinkSelected)
 					.addFunction("ClearSelection", ax::NodeEditor::ClearSelection)
@@ -999,10 +1665,17 @@ void init_imgui_module(lua_State* L)
 						{ ax::NodeEditor::Flow(linkId, direction.isNil() ? ax::NodeEditor::FlowDirection::Forward : (ax::NodeEditor::FlowDirection)direction.cast<int>().value()); })
 					.addFunction("Icon", +[](const ImVec2& size, int type, bool filled, luabridge::LuaRef color, luabridge::LuaRef innerColor)
 						{ ax::Widgets::Icon(size, (ax::Drawing::IconType)type, filled, color.isNil() ? ImVec4(1, 1, 1, 1) : color, innerColor.isNil() ? ImVec4(0, 0, 0, 0) : innerColor); })
+					.addFunction("GetIconVisualRightPadding", +[](const ImVec2& size, int type, bool filled)
+						{ return ax::Drawing::GetIconVisualRightPadding(size, (ax::Drawing::IconType)type, filled); })
 					.addFunction("AddNodeHeaderBackground", 
 						+[](ax::NodeEditor::NodeId id, SDL_Texture* texture, const ImVec4& color, const ImVec2& min_rect, const ImVec2& max_rect)
 						{
-							int w, h; SDL_QueryTexture(texture, nullptr, nullptr, &w, &h);
+							if (texture == nullptr)
+								return;
+							int w = 0;
+							int h = 0;
+							if (SDL_QueryTexture(texture, nullptr, nullptr, &w, &h) != 0 || w <= 0 || h <= 0)
+								return;
 							ImGUI_NodeEditor_AddNodeHeaderBackground(id, (ImTextureID)texture, ImVec2((float)w, (float)h), color, min_rect, max_rect);
 						},
 						+[](ax::NodeEditor::NodeId id, const Texture& texture, const ImVec4& color, const ImVec2& min_rect, const ImVec2& max_rect)

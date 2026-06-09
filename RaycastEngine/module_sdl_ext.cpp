@@ -24,11 +24,12 @@ bool SDL_ShowConfirmBox(Uint32 flags, const char* title, const char* message, SD
 	};
 	SDL_MessageBoxData _msgboxData =
 	{
-		flags, window, title, message,
+		flags, window, title ? title : "", message ? message : "",
 		2, _btnData, &msgBoxColorScheme
 	};
 
 	int _btnID = 0;
-	SDL_ShowMessageBox(&_msgboxData, &_btnID);
+	if (SDL_ShowMessageBox(&_msgboxData, &_btnID) != 0)
+		return false;
 	return _btnID == 1;
 }

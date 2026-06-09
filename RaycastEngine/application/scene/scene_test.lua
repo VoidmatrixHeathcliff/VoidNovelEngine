@@ -1,8 +1,9 @@
-local module = {}
-
 local rl = Engine.Raylib
 
+local Class = require("application.framework.class")
 local Scene = require("application.framework.scene")
+
+local SceneTest = Class.define("SceneTest", Scene)
 
 local function on_enter(self)
 
@@ -25,20 +26,15 @@ local function on_render(self)
     rl.DrawCircleLines(1920 / 2, 1080 / 2, 200 + 100 * self.scale, rl.Color(45, 100, 215, 215))
 end
 
-module.new = function()
-    local o = 
-    {
-        scale = 0,
-        interval = 0,
-
-        on_enter = on_enter,
-        on_exit = on_exit,
-        on_update = on_update,
-        on_render = on_render,
-    }
-    setmetatable(o, Scene.new())
-    o.__index = o
-    return o
+function SceneTest:ctor()
+    Class.call_super(SceneTest, self, "ctor")
+    self.scale = 0
+    self.interval = 0
 end
 
-return module
+SceneTest.on_enter = on_enter
+SceneTest.on_exit = on_exit
+SceneTest.on_update = on_update
+SceneTest.on_render = on_render
+
+return SceneTest

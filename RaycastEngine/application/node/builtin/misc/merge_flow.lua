@@ -1,0 +1,64 @@
+local Common = require("application.framework.builtin_node_common")
+
+local sdl = Common.sdl
+local rl = Common.rl
+local util = Common.util
+local imgui = Common.imgui
+
+local Class = Common.Class
+local Timer = Common.Timer
+local Tween = Common.Tween
+local Billboard = Common.Billboard
+local BlueprintNode = Common.BlueprintNode
+local LogManager = Common.LogManager
+local TextWrapper = Common.TextWrapper
+local ColorHelper = Common.ColorHelper
+local UndoManager = Common.UndoManager
+local VideoDecoder = Common.VideoDecoder
+local GlobalContext = Common.GlobalContext
+local ModifyManager = Common.ModifyManager
+local BranchSelector = Common.BranchSelector
+local ResourcesManager = Common.ResourcesManager
+local BackgroundObject = Common.BackgroundObject
+local ForegroundObject = Common.ForegroundObject
+local LetterboxingObject = Common.LetterboxingObject
+local SubtitleObject = Common.SubtitleObject
+local TransitionFadeObject = Common.TransitionFadeObject
+local VideoRendererObject = Common.VideoRendererObject
+local NodeRuntimeHelper = Common.NodeRuntimeHelper
+
+local NodeDef =
+{
+    merge_flow =
+    {
+    type_id = "merge_flow",
+    icon_id = "node-tree-flip",
+    color = imgui.ImVec4(imgui.ImColor(121, 124, 127, 255).value),
+    name = "合并流程",
+    comment = nil,
+    category = "其他",
+    category_order = 9,
+    order = 3,
+    menu_visible = true,
+    }
+}
+
+return Common.make_definition(NodeDef.merge_flow, function(ctx)
+    local blueprint = ctx.blueprint
+    local data = ctx.data
+    local _execute_next_node = NodeRuntimeHelper.execute_next_node
+    local _wait_interact_to_next_node = NodeRuntimeHelper.wait_interact_to_next_node
+    local _convert_imvec4_to_sdl_color = NodeRuntimeHelper.convert_imvec4_to_sdl_color
+    local _convert_imvec4_to_raylib_color = NodeRuntimeHelper.convert_imvec4_to_raylib_color
+
+    local node = ctx:create_base_node()
+    local builder = ctx.builder
+    builder:add_input({type_id = "flow", name = "流程1"})
+    builder:add_input({type_id = "flow", name = "流程2"})
+    builder:add_input({type_id = "flow", name = "流程3"})
+    builder:add_output({type_id = "flow"})
+    node.on_execute = function(self, scene)
+        _execute_next_node(self)
+    end
+    return node
+end)

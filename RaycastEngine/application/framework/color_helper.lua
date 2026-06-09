@@ -34,11 +34,16 @@ module.IMGUI_WHITE = imgui.ImVec4(imgui.ImColor(255, 255, 255, 255).value)
 
 module.AssetTypeColorPool = 
 {
+    flow = imgui.ImVec4(imgui.ImColor(129, 180, 255, 255).value),
+    style = imgui.ImVec4(imgui.ImColor(232, 180, 72, 255).value),
+    ui = imgui.ImVec4(imgui.ImColor(107, 187, 133, 255).value),
+    save_profile = imgui.ImVec4(imgui.ImColor(151, 160, 178, 255).value),
     font = imgui.ImVec4(imgui.ImColor(192, 198, 201, 255).value),
     audio = imgui.ImVec4(imgui.ImColor(0, 149, 217, 255).value),
     video = imgui.ImVec4(imgui.ImColor(2, 135, 96, 255).value),
     shader = imgui.ImVec4(imgui.ImColor(188, 100, 164, 255).value),
     texture = imgui.ImVec4(imgui.ImColor(228, 158, 97, 255).value),
+    file = imgui.ImVec4(imgui.ImColor(180, 186, 196, 255).value),
 }
 
 module.ValueTypeColorPool = 

@@ -78,61 +78,67 @@ local meta_def_pool =
 local color_key <const> = imgui.ImVec4(imgui.ImColor(238, 130, 124, 255).value)
 local color_value <const> = imgui.ImVec4(imgui.ImColor(147, 202, 118, 255).value)
 
+local function _get_meta_name(game_object)
+    if type(game_object) == "table" then
+        if game_object.get_class_name then
+            return game_object:get_class_name()
+        end
+        return game_object._metaname or "GameObject"
+    end
+    return "GameObject"
+end
+
 module.on_enter = function()
 
 end
 
 module.on_update = function(self, delta)
-    imgui.Begin("监控视图")
-        if imgui.BeginTabBar("TabBar_Monitor") then
-            imgui.SetNextItemWidth(imgui.GetContentRegionAvail().x / 2)
-            if imgui.BeginTabItem("场景数据") then
-                if not GlobalContext.is_debug_game then
-                    imgui.TextDisabled("启动调试以检查场景数据…")
+    local is_open = imgui.Begin("监控视图")
+    if is_open then
+        if not GlobalContext.is_debug_game then
+            imgui.TextDisabled("启动调试以检查场景数据…")
+        else
+            local blueprint = GlobalContext.get_runtime_blueprint and GlobalContext.get_runtime_blueprint() or GlobalContext.current_blueprint
+            imgui.BeginChild("scene_data", imgui.ImVec2(0, 0), imgui.ChildFlags.Borders)
+                local height <const> = imgui.GetTextLineHeight()
+                local size_icon <const> = imgui.ImVec2(height, height)
+                local flags <const> = imgui.TreeNodeFlags.DefaultOpen | imgui.TreeNodeFlags.SpanFullWidth
+                if not blueprint or not blueprint._scene_context then
+                    imgui.TextDisabled("当前没有可用的调试场景上下文")
                 else
-                    imgui.BeginChild("scene_data")
-                        local height <const> = imgui.GetTextLineHeight()
-                        local size_icon <const> = imgui.ImVec2(height, height)
-                        local flags <const> = imgui.TreeNodeFlags.DefaultOpen | imgui.TreeNodeFlags.SpanFullWidth
-                        for idx, game_object in ipairs(GlobalContext.current_blueprint._scene_context._go_list) do
-                            local open = imgui.TreeNode(string.format("##game_object_%d", idx), flags)
+                    for idx, game_object in ipairs(blueprint._scene_context._go_list) do
+                        local open = imgui.TreeNode(string.format("##game_object_%d", idx), flags)
+                        imgui.SameLine()
+                        local meta_name = _get_meta_name(game_object)
+                        local meta_def = meta_def_pool[meta_name] or meta_def_pool["GameObject"]
+                        imgui.Image(ResourcesManager.find_icon(meta_def.icon_id), size_icon, nil, nil, meta_def.color, nil)
+                        imgui.SameLine()
+                        imgui.Text(string.format("[%s] %s (%d)", meta_def.name, game_object._id, game_object._z_idx))
+                        if open then
+                            imgui.BeginGroup()
+                                for k, _ in pairs(game_object) do
+                                    imgui.TextColored(color_key, tostring(k))
+                                end
+                            imgui.EndGroup()
                             imgui.SameLine()
-                            local meta_def = meta_def_pool[game_object._metaname] or meta_def_pool["GameObject"]
-                            imgui.Image(ResourcesManager.find_icon(meta_def.icon_id), size_icon, nil, nil, meta_def.color, nil)
+                            imgui.BeginGroup()
+                                for _, _ in pairs(game_object) do
+                                    imgui.Text("-")
+                                end
+                            imgui.EndGroup()
                             imgui.SameLine()
-                            imgui.Text(string.format("[%s] %s (%d)", meta_def.name, game_object._id, game_object._z_idx))
-                            if open then
-                                imgui.BeginGroup()
-                                    for k, _ in pairs(game_object) do
-                                        imgui.TextColored(color_key, tostring(k))
-                                    end
-                                imgui.EndGroup()
-                                imgui.SameLine()
-                                imgui.BeginGroup()
-                                    for _, _ in pairs(game_object) do
-                                        imgui.Text("-")
-                                    end
-                                imgui.EndGroup()
-                                imgui.SameLine()
-                                imgui.BeginGroup()
-                                    for _, v in pairs(game_object) do
-                                        imgui.TextColored(color_value, tostring(v))
-                                    end
-                                imgui.EndGroup()
-                                imgui.TreePop()
-                            end
+                            imgui.BeginGroup()
+                                for _, v in pairs(game_object) do
+                                    imgui.TextColored(color_value, tostring(v))
+                                end
+                            imgui.EndGroup()
+                            imgui.TreePop()
                         end
-                    imgui.EndChild()
+                    end
                 end
-                imgui.EndTabItem()
-            end
-            imgui.SetNextItemWidth(imgui.GetContentRegionAvail().x)
-            if imgui.BeginTabItem("存档数据") then
-                imgui.TextDisabled("当前版本暂不支持存档功能…")
-                imgui.EndTabItem()
-            end
-            imgui.EndTabBar()
+            imgui.EndChild()
         end
+    end
     imgui.End()
 end
 

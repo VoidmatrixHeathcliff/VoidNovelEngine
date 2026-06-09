@@ -1,0 +1,32 @@
+{
+	"manifest": {
+		"extra": {
+			"document": {
+				"binding": "runtime.document_path"
+			},
+			"runtime_kind": {
+				"binding": "runtime.kind"
+			}
+		},
+		"title": {
+			"binding": "runtime.display_name"
+		},
+		"summary": {
+			"binding": "runtime.location_text"
+		}
+	},
+	"storage": {
+		"custom_root": "",
+		"mode": "auto",
+		"subdirectory_name": "save"
+	},
+	"thumbnail": {
+		"enabled": true,
+		"width": 480,
+		"height": 270
+	},
+	"debug": {
+		"pretty_json": true
+	},
+	"version": 1
+}

@@ -23,13 +23,31 @@ module.on_render = function()
     if not current_scene then return end
     current_scene:on_render()
 end
-    
+
 module.add_scene = function(scene, id)
     scene_pool[id] = scene
 end
 
 module.switch_to = function(id)
     next_scene = scene_pool[id]
+end
+
+module.shutdown = function()
+    local handled_scene_pool = {}
+    for _, scene in pairs(scene_pool) do
+        if scene and not handled_scene_pool[scene] then
+            handled_scene_pool[scene] = true
+            if scene == current_scene then
+                scene:on_exit()
+            end
+            if scene.destroy then
+                scene:destroy()
+            end
+        end
+    end
+    scene_pool = {}
+    current_scene = nil
+    next_scene = nil
 end
 
 return module

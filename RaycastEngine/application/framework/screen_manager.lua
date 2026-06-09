@@ -3,7 +3,7 @@ local module = {}
 local rl = Engine.Raylib
 
 local ColorHelper = require("application.framework.color_helper")
-local GlobalContext = require("application.framework.global_context")
+local ShaderRuntime = require("application.framework.shader_runtime")
 local SettingsManager = require("application.framework.settings_manager")
 
 local scale = 0
@@ -18,6 +18,13 @@ module.init = function(width, height)
     width_texture, height_texture = width, height
     rect_render_src.width, rect_render_src.height = width, -height
     rl.SetTextureFilter(texture_target.texture, SettingsManager.get("filter_mode"))
+end
+
+module.shutdown = function()
+    if texture_target then
+        rl.UnloadRenderTexture(texture_target)
+        texture_target = nil
+    end
 end
 
 module.get_size = function()
@@ -58,11 +65,20 @@ module.on_update = function()
 end
 
 module.on_render = function()
-    local rect_render_dst = rl.Rectangle((rl.GetScreenWidth() - (width_texture * scale)) * 0.5, 
+    local rect_render_dst = rl.Rectangle((rl.GetScreenWidth() - (width_texture * scale)) * 0.5,
         (rl.GetScreenHeight() - (height_texture * scale)) * 0.5, width_texture * scale, height_texture * scale)
-    if GlobalContext.shader_postprocess then GlobalContext.shader_postprocess:use() end
-    rl.DrawTexturePro(texture_target.texture, rect_render_src, rect_render_dst, render_origin, 0, ColorHelper.WHITE)
-    if GlobalContext.shader_postprocess then GlobalContext.shader_postprocess:unuse() end
+    ShaderRuntime.draw_with_shader(ShaderRuntime.resolve_global_shader(), function()
+        rl.DrawTexturePro(texture_target.texture, rect_render_src, rect_render_dst, render_origin, 0, ColorHelper.WHITE)
+    end,
+    {
+        layer = "global",
+        texture = texture_target.texture,
+        resolution_width = width_texture,
+        resolution_height = height_texture,
+        mouse_x = mouse_x,
+        mouse_y = mouse_y,
+        alpha = 1,
+    })
     if not SettingsManager.get("release_mode") and SettingsManager.get("is_show_debug_fps") then rl.DrawFPS(25, 25) end
 end
 
