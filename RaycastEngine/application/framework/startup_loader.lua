@@ -5,6 +5,7 @@ local imgui = Engine.ImGUI
 local DefinitionLoader = require("application.framework.definition_loader")
 local FlowManager = require("application.framework.flow_manager")
 local GlobalContext = require("application.framework.global_context")
+local ImGUIHelper = require("application.framework.imgui_helper")
 local LogManager = require("application.framework.log_manager")
 local NativeIO = require("application.framework.native_io")
 local ResourceIndex = require("application.framework.resource_index")
@@ -12,6 +13,7 @@ local ResourcesManager = require("application.framework.resources_manager")
 local ResourceTaskRunner = require("application.framework.resource_task_runner")
 local ScreenManager = require("application.framework.screen_manager")
 local SettingsManager = require("application.framework.settings_manager")
+local TextWrapper = require("application.framework.text_wrapper")
 local UIWorkspaceManager = require("application.framework.ui_workspace_manager")
 local VideoImporter = require("application.framework.video_importer")
 
@@ -107,39 +109,88 @@ local function _rotated_point(center, x, y, cos_angle, sin_angle)
         center.y + x * sin_angle + y * cos_angle)
 end
 
-local function _draw_imgui_loading_spinner(texture)
-    if not texture then
-        return
-    end
-
+local function _draw_imgui_loading_status(texture, status_text)
     local viewport = imgui.GetMainViewport()
     local editor_zoom_ratio = SettingsManager.get("editor_zoom_ratio") or 1.0
     local icon_size = 28 * editor_zoom_ratio
     local half_size = icon_size * 0.5
     local margin = 30 * editor_zoom_ratio
+    local gap = 10 * editor_zoom_ratio
     local center = imgui.ImVec2(
-        viewport.Pos.x + viewport.Size.x - margin,
-        viewport.Pos.y + viewport.Size.y - margin)
+        viewport.Pos.x + margin + half_size,
+        viewport.Pos.y + viewport.Size.y - margin - half_size)
     local draw_list = imgui.GetWindowDrawList()
-    local angle = rl.GetTime() * startup_spinner_rotation_speed
-    local cos_angle = math.cos(angle)
-    local sin_angle = math.sin(angle)
+    local text_x = viewport.Pos.x + margin
 
-    draw_list:AddImageQuad(
-        texture,
-        _rotated_point(center, -half_size, -half_size, cos_angle, sin_angle),
-        _rotated_point(center, half_size, -half_size, cos_angle, sin_angle),
-        _rotated_point(center, half_size, half_size, cos_angle, sin_angle),
-        _rotated_point(center, -half_size, half_size, cos_angle, sin_angle),
-        nil,
-        nil,
-        nil,
-        nil,
-        imgui.ImColor(255, 255, 255, 255):to_u32())
+    if texture then
+        local angle = rl.GetTime() * startup_spinner_rotation_speed
+        local cos_angle = math.cos(angle)
+        local sin_angle = math.sin(angle)
+
+        draw_list:AddImageQuad(
+            texture,
+            _rotated_point(center, -half_size, -half_size, cos_angle, sin_angle),
+            _rotated_point(center, half_size, -half_size, cos_angle, sin_angle),
+            _rotated_point(center, half_size, half_size, cos_angle, sin_angle),
+            _rotated_point(center, -half_size, half_size, cos_angle, sin_angle),
+            nil,
+            nil,
+            nil,
+            nil,
+            imgui.ImColor(255, 255, 255, 255):to_u32())
+        text_x = center.x + half_size + gap
+    end
+
+    if type(status_text) == "string" and status_text ~= "" then
+        local text_height = imgui.GetTextLineHeight()
+        local max_text_width = math.max(60, viewport.Pos.x + viewport.Size.x - margin - text_x)
+        local display_text = ImGUIHelper.EllipsisTail(status_text, max_text_width)
+        draw_list:AddText(
+            imgui.ImVec2(text_x, center.y - text_height * 0.5),
+            imgui.ImColor(220, 220, 220, 255):to_u32(),
+            display_text)
+    end
 end
 
-local function _draw_raylib_loading_spinner(texture)
-    if not texture then
+local function _dispose_status_text_wrapper(self)
+    if self._status_text_wrapper and self._status_text_wrapper.dispose then
+        self._status_text_wrapper:dispose()
+    end
+    self._status_text_wrapper = nil
+    self._status_text_cache = nil
+    self._status_text_wrap_width = nil
+    self._status_text_font_size = nil
+end
+
+local function _get_status_text_wrapper(self, status_text, wrap_width, font_size)
+    if not GlobalContext.font_wrapper_sdl then
+        return nil
+    end
+
+    wrap_width = math.max(1, math.floor(tonumber(wrap_width) or 1))
+    font_size = math.max(1, math.floor(tonumber(font_size) or 1))
+    if self._status_text_wrapper
+        and self._status_text_cache == status_text
+        and self._status_text_wrap_width == wrap_width
+        and self._status_text_font_size == font_size then
+        return self._status_text_wrapper
+    end
+
+    _dispose_status_text_wrapper(self)
+    self._status_text_wrapper = TextWrapper.new(
+        GlobalContext.font_wrapper_sdl,
+        status_text,
+        sdl.Color(220, 220, 220, 255),
+        wrap_width,
+        font_size)
+    self._status_text_cache = status_text
+    self._status_text_wrap_width = wrap_width
+    self._status_text_font_size = font_size
+    return self._status_text_wrapper
+end
+
+local function _draw_raylib_loading_status(self, texture, status_text)
+    if type(status_text) ~= "string" or status_text == "" then
         return
     end
 
@@ -148,15 +199,52 @@ local function _draw_raylib_loading_spinner(texture)
     local icon_size = 28 * editor_zoom_ratio
     local half_size = icon_size * 0.5
     local margin = 30 * editor_zoom_ratio
-    local angle_degrees = rl.GetTime() * startup_spinner_rotation_speed * 180 / math.pi
+    local gap = 10 * editor_zoom_ratio
+    local center_x = margin + half_size
+    local center_y = height - margin - half_size
+    local text_x = margin
 
-    rl.DrawTexturePro(
-        texture,
-        rl.Rectangle(0, 0, texture.width, texture.height),
-        rl.Rectangle(width - margin, height - margin, icon_size, icon_size),
-        rl.Vector2(half_size, half_size),
-        angle_degrees,
-        rl.Color(255, 255, 255, 255))
+    if not texture then
+        center_x = margin
+    else
+        local angle_degrees = rl.GetTime() * startup_spinner_rotation_speed * 180 / math.pi
+        rl.DrawTexturePro(
+            texture,
+            rl.Rectangle(0, 0, texture.width, texture.height),
+            rl.Rectangle(center_x, center_y, icon_size, icon_size),
+            rl.Vector2(half_size, half_size),
+            angle_degrees,
+            rl.Color(255, 255, 255, 255))
+        text_x = center_x + half_size + gap
+    end
+
+    local wrap_width = math.max(1, width - text_x - margin)
+    local font_size = math.max(16, math.floor(20 * editor_zoom_ratio + 0.5))
+    local wrapper = _get_status_text_wrapper(self, status_text, wrap_width, font_size)
+    if wrapper and wrapper.texture then
+        local text_y = center_y - (wrapper.h or font_size) * 0.5
+        rl.DrawTextureV(wrapper.texture, rl.Vector2(text_x, text_y), rl.Color(255, 255, 255, 255))
+    else
+        rl.DrawText(status_text, math.floor(text_x), math.floor(center_y - font_size * 0.5), font_size, rl.Color(220, 220, 220, 255))
+    end
+end
+
+local function _get_startup_status_text(runner)
+    if runner and type(runner.get_compact_status_text) == "function" then
+        local ok, text = pcall(runner.get_compact_status_text, runner)
+        if ok and type(text) == "string" and text ~= "" then
+            return text
+        end
+    end
+
+    local stage_text = runner and runner.stage_name ~= "" and runner.stage_name or "准备中"
+    local label_text = runner and runner.current_label ~= "" and runner.current_label or "正在准备资源任务..."
+    local total_stage_count = runner and tonumber(runner.total_stage_count) or 0
+    if total_stage_count > 0 then
+        local stage_index = runner.is_finished and total_stage_count or math.max(1, math.min(runner._stage_index or 1, total_stage_count))
+        return string.format("(%d/%d) %s - %s", stage_index, total_stage_count, stage_text, label_text)
+    end
+    return string.format("%s - %s", stage_text, label_text)
 end
 
 module.create = function(config)
@@ -458,6 +546,10 @@ module.create = function(config)
         runner = runner,
         _spinner_texture = _load_spinner_texture(is_release_mode),
         _spinner_uses_raylib = is_release_mode,
+        _status_text_wrapper = nil,
+        _status_text_cache = nil,
+        _status_text_wrap_width = nil,
+        _status_text_font_size = nil,
     }, StartupLoader)
 end
 
@@ -492,19 +584,20 @@ function StartupLoader:draw_loading_screen()
     imgui.Begin("##startup_loading_screen", nil, flags)
     imgui.PopStyleColor()
     imgui.PopStyleVar(3)
-    _draw_imgui_loading_spinner(self._spinner_texture)
+    _draw_imgui_loading_status(self._spinner_texture, _get_startup_status_text(self.runner))
     imgui.End()
 end
 
 function StartupLoader:render_loading_screen()
     if self._spinner_uses_raylib then
-        _draw_raylib_loading_spinner(self._spinner_texture)
+        _draw_raylib_loading_status(self, self._spinner_texture, _get_startup_status_text(self.runner))
     end
 end
 
 function StartupLoader:destroy()
     _destroy_spinner_texture(self._spinner_texture, self._spinner_uses_raylib)
     self._spinner_texture = nil
+    _dispose_status_text_wrapper(self)
 end
 
 function StartupLoader:is_finished()

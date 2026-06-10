@@ -86,6 +86,46 @@ local function _notify_presented(self)
     end
 end
 
+local function _get_stage_index(self)
+    if self.total_stage_count <= 0 then
+        return 0
+    end
+    if self.is_finished then
+        return self.total_stage_count
+    end
+    return math.max(1, math.min(self._stage_index, self.total_stage_count))
+end
+
+local function _get_progress_percent(self)
+    local progress_percent = math.floor((self.progress_ratio or 0) * 100 + 0.5)
+    return math.max(0, math.min(100, progress_percent))
+end
+
+local function _build_compact_status_text(self)
+    local raw_stage_text = self.stage_name ~= "" and self.stage_name or "准备中"
+    local raw_label_text = self.current_label ~= "" and self.current_label or "正在准备资源任务..."
+    local detail_text = raw_label_text
+    if detail_text == raw_stage_text then
+        detail_text = ""
+    end
+
+    local main_text = raw_stage_text
+    if detail_text ~= "" then
+        main_text = string.format("%s - %s", raw_stage_text, detail_text)
+    end
+
+    if self.total_stage_count > 0 then
+        return string.format(
+            "(%d/%d) %s · %d%%",
+            _get_stage_index(self),
+            self.total_stage_count,
+            main_text,
+            _get_progress_percent(self))
+    end
+
+    return string.format("%s · %d%%", main_text, _get_progress_percent(self))
+end
+
 local function _prepare_next_stage(self)
     if self._current_stage then
         self.finished_stage_count = math.min(self.total_stage_count, self.finished_stage_count + 1)
@@ -251,6 +291,10 @@ end
 
 function ResourceTaskRunner:notify_presented()
     _notify_presented(self)
+end
+
+function ResourceTaskRunner:get_compact_status_text()
+    return _build_compact_status_text(self)
 end
 
 function ResourceTaskRunner:draw_modal()
