@@ -9,10 +9,12 @@ local NativeIO = require("application.framework.native_io")
 local NodeRegistry = require("application.framework.node_registry")
 local PinRegistry = require("application.framework.pin_registry")
 local PlugRuntime = require("application.framework.plug_runtime")
+local SettingsManager = require("application.framework.settings_manager")
 
 local module = {}
 
 local default_root_path <const> = "plugins"
+local release_manifest_path <const> = "application/plugin_manifest.json"
 local supported_api_version <const> = 1
 local loaded_plugin_pool = {}
 local last_report = nil
@@ -251,6 +253,37 @@ local function _read_manifest(path)
     end
 
     return data
+end
+
+local function _read_release_plugin_manifest()
+    if SettingsManager.get("release_mode") ~= true then
+        return nil
+    end
+    if not NativeIO.file_exists(release_manifest_path) then
+        return nil
+    end
+
+    local content, err = NativeIO.read_text(release_manifest_path)
+    if not content then
+        return nil, err or "无法读取发布插件清单"
+    end
+
+    local ok, data = json.ParseToLua(content)
+    if not ok or type(data) ~= "table" then
+        return nil, "发布插件清单解析失败"
+    end
+
+    local package_paths = {}
+    local path_pool = {}
+    for _, raw_path in ipairs(type(data.package_paths) == "table" and data.package_paths or {}) do
+        local package_path = _safe_relative_path(raw_path)
+        if package_path and not path_pool[package_path] then
+            path_pool[package_path] = true
+            table.insert(package_paths, package_path)
+        end
+    end
+    table.sort(package_paths)
+    return package_paths
 end
 
 local function _normalize_manifest(path, raw_manifest)
@@ -530,6 +563,31 @@ function module.scan_and_load(root_path)
     end
     loaded_plugin_pool = {}
     local report = _make_empty_report(root)
+    local release_package_paths, release_manifest_err = _read_release_plugin_manifest()
+
+    if release_manifest_err then
+        report.failure_count = report.failure_count + 1
+        report.items[#report.items + 1] = {path = release_manifest_path, ok = false, error = release_manifest_err}
+        LogManager.log(string.format("插件发布清单读取失败：%s", tostring(release_manifest_err)), "warning")
+    end
+
+    if release_package_paths then
+        for _, path in ipairs(release_package_paths) do
+            _load_package(path, report)
+        end
+
+        if report.success_count > 0 or report.failure_count > 0 then
+            _invalidate_plugin_dependent_caches()
+            LogManager.log(string.format(
+                "插件扫描完成：成功 %d，失败 %d",
+                report.success_count,
+                report.failure_count), report.failure_count > 0 and "warning" or "info")
+        end
+
+        _sync_global_registry()
+        last_report = report
+        return report
+    end
 
     if not NativeIO.directory_exists(root) then
         _sync_global_registry()

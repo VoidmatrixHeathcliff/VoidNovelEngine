@@ -183,6 +183,61 @@ local function _ensure_parent_directory(path)
     return NativeIO.create_directories(directory)
 end
 
+local function _resolve_flow_guid_with_meta(value)
+    local guid = ResourceIndex.resolve_guid("flow", value)
+    if not guid then
+        return nil
+    end
+    local meta = ResourceIndex.find_by_guid(guid)
+    if not meta or meta.type ~= "flow" then
+        return nil
+    end
+    return guid, meta
+end
+
+local function _describe_flow_meta(meta, fallback)
+    if type(meta) == "table" then
+        return meta.relative_path or meta.path or meta.id or meta.guid or fallback or "未知流程"
+    end
+    return fallback or "未知流程"
+end
+
+local function _resolve_release_entry_flow_guid()
+    local configured_entry = SettingsManager.get_entry_flow_guid()
+    local configured_guid, configured_meta = _resolve_flow_guid_with_meta(configured_entry)
+    if configured_guid then
+        return configured_guid, nil
+    end
+    if type(configured_entry) == "string" and configured_entry ~= "" then
+        return nil, string.format("发布入口流程无效：%s", configured_entry)
+    end
+
+    local fallback_candidate_list =
+    {
+        {label = "当前流程", value = SettingsManager.get_current_flow_guid()},
+        {label = "当前图形流程", value = SettingsManager.get_current_graph_flow_guid and SettingsManager.get_current_graph_flow_guid() or ""},
+        {label = "当前文本剧本", value = SettingsManager.get_current_text_flow_guid and SettingsManager.get_current_text_flow_guid() or ""},
+    }
+    for _, candidate in ipairs(fallback_candidate_list) do
+        local guid, meta = _resolve_flow_guid_with_meta(candidate.value)
+        if guid then
+            return guid, string.format("发布入口流程未设置，已使用%s作为入口：%s",
+                candidate.label,
+                _describe_flow_meta(meta, guid))
+        end
+    end
+
+    for _, guid_candidate in ipairs(SettingsManager.get_open_flow_guid_list and SettingsManager.get_open_flow_guid_list() or {}) do
+        local guid, meta = _resolve_flow_guid_with_meta(guid_candidate)
+        if guid then
+            return guid, string.format("发布入口流程未设置，已使用已打开流程作为入口：%s",
+                _describe_flow_meta(meta, guid))
+        end
+    end
+
+    return nil, "发布入口流程未设置，请在发布设置中选择入口流程"
+end
+
 local function _starts_with(text, prefix)
     return type(text) == "string"
         and type(prefix) == "string"
@@ -223,6 +278,37 @@ local function _collect_release_definition_manifest(copy_root)
         end
 
         table.sort(pair.list)
+    end
+
+    return manifest
+end
+
+local function _collect_release_plugin_manifest(copy_root)
+    local plugins_root = copy_root .. "\\plugins"
+    if not NativeIO.directory_exists(plugins_root) then
+        return {version = 1, package_paths = {}}
+    end
+
+    local path_list, list_err = NativeIO.list_directory_array(plugins_root, false, false)
+    if not path_list then
+        return nil, list_err or string.format("无法扫描插件目录：%s", plugins_root)
+    end
+
+    local normalized_root = _normalize_slashes(copy_root)
+    local manifest =
+    {
+        version = 1,
+        package_paths = {},
+    }
+
+    table.sort(path_list)
+    for _, path in ipairs(path_list) do
+        if NativeIO.directory_exists(path) and NativeIO.file_exists(path .. "\\manifest.json") then
+            local normalized_path = _normalize_slashes(path)
+            if normalized_path and normalized_root and _starts_with(normalized_path, normalized_root .. "/") then
+                table.insert(manifest.package_paths, normalized_path:sub(#normalized_root + 2))
+            end
+        end
     end
 
     return manifest
@@ -494,6 +580,15 @@ local on_export_windows = function()
         LogManager.log("正在执行Windows平台游戏发布流程...", "info")
         LogManager.log("正在保存已打开的工程文档...", "info")
         _save_workspace_documents_for_export()
+
+        local release_entry_flow_guid, release_entry_flow_notice = _resolve_release_entry_flow_guid()
+        if not release_entry_flow_guid then
+            error(release_entry_flow_notice or "发布入口流程未设置")
+        end
+        if release_entry_flow_notice then
+            LogManager.log(release_entry_flow_notice, "warning")
+        end
+
         LogManager.log("正在构建发布目录...", "info")
 
         local target_folder <const> = "release\\Windows"
@@ -516,6 +611,10 @@ local on_export_windows = function()
             "application\\pin",
             "application\\resources",
             "application\\scene",
+        }
+        local optional_folder_list =
+        {
+            "plugins",
         }
         local essential_file_list =
         {
@@ -540,6 +639,12 @@ local on_export_windows = function()
         for _, folder in ipairs(essential_folder_list) do
             local ok_copy_dir, err_copy_dir = NativeIO.copy_directory(folder, copy_dst_folder .. "\\" .. folder)
             _ensure_ok(ok_copy_dir, err_copy_dir, string.format("复制目录：%s", folder))
+        end
+        for _, folder in ipairs(optional_folder_list) do
+            if NativeIO.directory_exists(folder) then
+                local ok_copy_dir, err_copy_dir = NativeIO.copy_directory(folder, copy_dst_folder .. "\\" .. folder)
+                _ensure_ok(ok_copy_dir, err_copy_dir, string.format("复制可选目录：%s", folder))
+            end
         end
         for _, file in ipairs(essential_file_list) do
             local ok_copy_file, err_copy_file = NativeIO.copy_file(file, copy_dst_folder .. "\\" .. file, true)
@@ -568,6 +673,12 @@ local on_export_windows = function()
         local ok_write_manifest, err_write_manifest = NativeIO.write_text(definition_manifest_path, json.PrintFromLua(definition_manifest))
         _ensure_ok(ok_write_manifest, err_write_manifest, "写入定义清单")
 
+        local plugin_manifest, plugin_manifest_err = _collect_release_plugin_manifest(copy_dst_folder)
+        _ensure_ok(plugin_manifest ~= nil, plugin_manifest_err, "生成插件清单")
+        local plugin_manifest_path = copy_dst_folder .. "\\application\\plugin_manifest.json"
+        local ok_write_plugin_manifest, err_write_plugin_manifest = NativeIO.write_text(plugin_manifest_path, json.PrintFromLua(plugin_manifest))
+        _ensure_ok(ok_write_plugin_manifest, err_write_plugin_manifest, "写入插件清单")
+
         LogManager.log("正在编译脚本...", "info")
         local script_path_list, list_err = NativeIO.list_directory_array(copy_dst_folder, true, true)
         if not script_path_list then
@@ -583,6 +694,7 @@ local on_export_windows = function()
         local copy_data = SettingsManager.copy()
         copy_data.release_mode = true
         copy_data.single_file = SettingsManager.get("single_file") == true
+        copy_data.entry_flow_guid = release_entry_flow_guid
         if copy_data.single_file then
             LogManager.log("单文件发布将按默认策略使用用户数据目录保存运行时存档", "info")
         end

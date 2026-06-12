@@ -468,8 +468,10 @@ module.create = function(config)
                     {
                         label = "按需预加载入口流程文档",
                         run = function()
-                            local entry_flow_guid = SettingsManager.get_entry_flow_guid()
-                            if SettingsManager.get("release_mode") and entry_flow_guid then
+                            local entry_flow_guid = ResourceIndex.resolve_guid("flow", SettingsManager.get_entry_flow_guid())
+                                or ResourceIndex.resolve_guid("flow", SettingsManager.get_current_flow_guid())
+                                or ""
+                            if SettingsManager.get("release_mode") and entry_flow_guid ~= "" then
                                 FlowManager.get_blueprint(entry_flow_guid, "flow_runtime")
                             end
                         end
