@@ -1,4 +1,4 @@
-# VoidNovelEngine
+﻿# VoidNovelEngine
 
 <div align="center">
     <p align="center">
@@ -79,7 +79,7 @@ VoidNovelEngine工具的二进制版本可在[GitHub发布页面](https://github
 
 ## 文档教程
 
-> 🚀[最新 dev.2 文档](doc/latest_doc/VNEguide.md)
+> 🚀[最新 dev.3 文档](doc/latest_doc/VNEguide.md)
 > 
 > 📦[旧版文档目录](doc/old_version_doc/list.md)
 
@@ -88,6 +88,7 @@ VoidNovelEngine工具的二进制版本可在[GitHub发布页面](https://github
 + VoidNovelEngine官方1群：[932941346](https://qm.qq.com/q/odwOt62qie)
 + VoidNovelEngine官方2群：[191086491](https://qm.qq.com/q/bvBNOQdMGY)
 + VoidNovelEngine官方3群：[978579458](https://qm.qq.com/q/56LS5seRqg)
++ 
 
 ## 三方依赖
 
@@ -95,6 +96,8 @@ VoidNovelEngine工具的二进制版本可在[GitHub发布页面](https://github
 |:--------------------|:---------------------------------------------------------------------------------------|
 | cJSON       | [https://github.com/DaveGamble/cJSON](https://github.com/DaveGamble/cJSON)                     |
 | cpp-base64  | [https://github.com/ReneNyffenegger/cpp-base64](https://github.com/ReneNyffenegger/cpp-base64) |
+| crossguid   | [https://github.com/graeme-hill/crossguid](https://github.com/graeme-hill/crossguid)                 |
+| efsw        | [https://github.com/SpartanJ/efsw](https://github.com/SpartanJ/efsw)                             |
 | imgui       | [https://github.com/ocornut/imgui](https://github.com/ocornut/imgui)                           |
 | Lua         | [https://www.lua.org/](https://www.lua.org/)                                                   |
 | LuaBridge3  | [https://github.com/kunitoki/LuaBridge3](https://github.com/kunitoki/LuaBridge3)               |
@@ -112,4 +115,5 @@ VoidNovelEngine是一款开源软件，因此你可以免费在MIT开源协议�
 ## 历史Star
 
 [![Stargazers over time](https://starchart.cc/VoidmatrixHeathcliff/VoidNovelEngine.svg?variant=adaptive)](https://starchart.cc/VoidmatrixHeathcliff/VoidNovelEngine)
+
 
