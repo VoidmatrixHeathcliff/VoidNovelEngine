@@ -88,7 +88,7 @@ VoidNovelEngine工具的二进制版本可在[GitHub发布页面](https://github
 + VoidNovelEngine官方1群：[932941346](https://qm.qq.com/q/odwOt62qie)
 + VoidNovelEngine官方2群：[191086491](https://qm.qq.com/q/bvBNOQdMGY)
 + VoidNovelEngine官方3群：[978579458](https://qm.qq.com/q/56LS5seRqg)
-+ 
++ VoidNovelEngine官方4群：[881651704](https://qm.qq.com/q/JTOHRNMTeg)
 
 ## 三方依赖
 
@@ -115,5 +115,4 @@ VoidNovelEngine是一款开源软件，因此你可以免费在MIT开源协议�
 ## 历史Star
 
 [![Stargazers over time](https://starchart.cc/VoidmatrixHeathcliff/VoidNovelEngine.svg?variant=adaptive)](https://starchart.cc/VoidmatrixHeathcliff/VoidNovelEngine)
-
 
