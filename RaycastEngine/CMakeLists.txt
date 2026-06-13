@@ -42,7 +42,7 @@ else()
 endif()
 
 # 添加依赖，LuaBridge 仅头文件
-set(LibraryList "cJSON" "cpp-base64" "ImGUI" "Lua" "LuaBridge" "MicroPather" "Raylib" "SDL2")
+set(LibraryList "cJSON" "cpp-base64" "ImGUI" "Lua" "LuaBridge" "MicroPather" "Raylib" "SDL2" "crossguid" "efsw")
 AddLibrary("${LibraryList}")
 
 # 创建项目
@@ -126,6 +126,14 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
         imm32.lib
         msimg32.lib
         ws2_32.lib
+    )
+    target_link_libraries(${ProjectName}
+        "crossguid.lib"
+        "efsw.lib"
+        "mf.lib"
+        "mfuuid.lib"
+        "mfplat.lib"
+        "d3d11.lib"
     )
 else()
 endif()
