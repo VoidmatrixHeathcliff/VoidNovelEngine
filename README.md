@@ -114,5 +114,5 @@ VoidNovelEngine是一款开源软件，因此你可以免费在MIT开源协议�
 
 ## 历史Star
 
-[![Stargazers over time](https://starchart.cc/VoidmatrixHeathcliff/VoidNovelEngine.svg?variant=adaptive)](https://starchart.cc/VoidmatrixHeathcliff/VoidNovelEngine)
+[![Star History Chart](https://api.star-history.com/chart?repos=VoidmatrixHeathcliff/VoidNovelEngine&type=date&legend=bottom-right&sealed_token=3DtB9TOHl9jsDM-IVNbcVkA_tFEiew2w4w5PMPmyKVhtwfNDwLMJkKbiPs6jaOhJzmum4Ug9SrB7jxNd6U6sycAuNuP-gjNztQVoKlwDLwXE3eJf7Lq7-A)](https://www.star-history.com/?repos=VoidmatrixHeathcliff%2FVoidNovelEngine&type=date&legend=bottom-right)
 
