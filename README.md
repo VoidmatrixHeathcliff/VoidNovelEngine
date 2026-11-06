@@ -33,6 +33,7 @@
 </div>
 
 > ❗本项目由此前个人实验性项目迁移而来，文档等更多内容仍在建设与规范中，最新代码内容请查看[dev分支](https://github.com/VoidmatrixHeathcliff/VoidNovelEngine/tree/dev)
+> 开发情报详见Bilibil：[https://space.bilibili.com/25864506/lists/7186222](https://space.bilibili.com/25864506/lists/7186222)
 
 ## 优势特色
 
