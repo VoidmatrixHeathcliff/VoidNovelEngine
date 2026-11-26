@@ -28,6 +28,9 @@
         <a href="https://github.com/VoidmatrixHeathcliff/VoidNovelEngine/blob/main/LICENSE" target="_blank">
             <img src="https://img.shields.io/github/license/VoidmatrixHeathcliff/VoidNovelEngine?style=flat">
         </a>
+        <p align="center">
+            <a href="https://atomgit.com/Voidmatrix/VoidNovelEngine"><img alt="AtomGit G-Star" src="https://atomgit.com/Voidmatrix/VoidNovelEngine/star/new_badge.svg"></a>
+        </p>
     </p>
     </br>
 </div>
